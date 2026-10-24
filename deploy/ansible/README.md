@@ -1,6 +1,6 @@
 # Despliegue remoto con Ansible
 
-El playbook despliega los binarios ARM64 de `nexusd` y `nexusctl` a la cuenta SSH de la R36S, instala y habilita una unidad systemd para el daemon, y valida el RPC de salud por el socket UDS local. El daemon corre con la cuenta SSH de despliegue, con `CAP_NET_ADMIN` asignada por systemd para permitir el escaneo Wi-Fi y acceso suplementario al grupo `input` para leer botones. Una regla udev permite al grupo `input` escribir el atributo de brillo del backlight; `ReadWritePaths` exceptúa solo ese atributo de la protección de solo lectura sobre `/sys`. Los botones `F1 + Vol+/−` ajustan el brillo, si F1 corresponde al evento esperado en el hardware; `Vol+/−` ajustan el audio. La CLI sigue siendo de usuario y consulta salud, sistema, capacidades, Wi-Fi y estado de hardware por el socket local.
+El playbook despliega los binarios ARM64 de `nexusd` y `nexusctl` a la cuenta SSH de la R36S, instala y habilita una unidad systemd para el daemon, y valida el RPC de salud por el socket UDS local. El daemon corre con la cuenta SSH de despliegue, con `CAP_NET_ADMIN` asignada por systemd para permitir el escaneo Wi-Fi y acceso suplementario al grupo `input` para leer botones. Una regla udev permite al grupo `input` escribir el atributo de brillo del backlight; `ReadWritePaths` exceptúa solo ese atributo de la protección de solo lectura sobre `/sys`. La captura en hardware identifica F como `BTN_TRIGGER_HAPPY5` (código 708), por lo que `F + Vol+/−` ajusta el brillo; `Vol+/−` ajusta el audio.
 
 ## Requisitos
 

@@ -37,7 +37,7 @@ const (
 	inputEventKey  = 1
 	keyVolumeDown  = 114
 	keyVolumeUp    = 115
-	keyFunctionF1  = 704 // BTN_TRIGGER_HAPPY1 in the R36S DTS
+	keyFunction    = 708 // BTN_TRIGGER_HAPPY5 observed for the R36S F button
 	volumeKeyStep  = 5
 	inputEventSize = 24 // struct input_event on the supported 64-bit Linux targets.
 )
@@ -79,12 +79,12 @@ func (p *Linux) WatchVolumeKeys(ctx context.Context) error {
 			code := binary.LittleEndian.Uint16(event[18:20])
 			value := int32(binary.LittleEndian.Uint32(event[20:24]))
 			if typ != inputEventKey || (value != 1 && value != 2) {
-				if typ == inputEventKey && code == keyFunctionF1 && value == 0 {
+				if typ == inputEventKey && code == keyFunction && value == 0 {
 					functionDown = false
 				}
 				continue
 			}
-			if code == keyFunctionF1 {
+			if code == keyFunction {
 				functionDown = true
 				continue
 			}
