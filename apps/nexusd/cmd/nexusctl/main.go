@@ -246,6 +246,7 @@ func printOutput(format string, value any) error {
 				BrightnessAvailable      bool    `json:"brightness_available"`
 				Brightness               int64   `json:"brightness"`
 				BrightnessMax            int64   `json:"brightness_max"`
+				BrightnessPercent        int64   `json:"brightness_percent"`
 				AudioAvailable           bool    `json:"audio_available"`
 				AudioDetail              string  `json:"audio_detail"`
 				VolumeAvailable          bool    `json:"volume_available"`
@@ -263,6 +264,7 @@ func printOutput(format string, value any) error {
 				BrightnessAvailable:      result.BrightnessAvailable,
 				Brightness:               result.Brightness,
 				BrightnessMax:            result.BrightnessMax,
+				BrightnessPercent:        brightnessPercent(result),
 				AudioAvailable:           result.AudioAvailable,
 				AudioDetail:              result.AudioDetail,
 				VolumeAvailable:          result.VolumeAvailable,
@@ -382,6 +384,7 @@ func printOutput(format string, value any) error {
 			[2]string{"SOC TEMPERATURE CELSIUS", fmt.Sprintf("%.1f", result.SocTemperatureCelsius)},
 			[2]string{"BRIGHTNESS AVAILABLE", strconv.FormatBool(result.BrightnessAvailable)},
 			[2]string{"BRIGHTNESS", fmt.Sprintf("%d/%d", result.Brightness, result.BrightnessMax)},
+			[2]string{"BRIGHTNESS PERCENT", fmt.Sprintf("%d%%", brightnessPercent(result))},
 			[2]string{"AUDIO AVAILABLE", strconv.FormatBool(result.AudioAvailable)},
 			[2]string{"AUDIO DETAIL", result.AudioDetail},
 			[2]string{"VOLUME AVAILABLE", strconv.FormatBool(result.VolumeAvailable)},
@@ -396,6 +399,20 @@ func printOutput(format string, value any) error {
 	default:
 		return fmt.Errorf("table output is not supported for %T", value)
 	}
+}
+
+func brightnessPercent(result *nexusv1.HardwareServiceGetStatusResponse) int64 {
+	if !result.BrightnessAvailable || result.BrightnessMax <= 0 {
+		return 0
+	}
+	percent := result.Brightness * 100 / result.BrightnessMax
+	if percent < 0 {
+		return 0
+	}
+	if percent > 100 {
+		return 100
+	}
+	return percent
 }
 
 func cleanCell(value string) string {
