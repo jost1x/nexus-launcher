@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package nexus.v1;
+
+option go_package = "nexusd/gen/nexus/v1;nexusv1";
+
+message GetInfoRequest {}
+message GetInfoResponse {
+  string os_id = 1;
+  string os_version = 2;
+  string kernel = 3;
+  string architecture = 4;
+  string hostname = 5;
+  uint64 memory_total_bytes = 6;
+  uint64 memory_available_bytes = 7;
+  uint64 uptime_seconds = 8;
+  string load_average = 9;
+}
+
+message Capability {
+  string name = 1;
+  bool available = 2;
+  bool verified_on_r36s = 3;
+  string detail = 4;
+}
+
+message ListCapabilitiesRequest {}
+message ListCapabilitiesResponse { repeated Capability items = 1; }
+
+message WifiServiceGetStatusRequest {}
+message WifiServiceGetStatusResponse {
+  string interface = 1;
+  string state = 2;
+  bool connected = 3;
+  string ssid = 4;
+  string manager = 5;
+  string detail = 6;
+  string bssid = 7;
+}
+
+message ScanRequest {
+  string interface = 1;
+  bool refresh = 2;
+}
+message WifiNetwork {
+  string ssid = 1;
+  string security = 2;
+  int32 signal_percent = 3;
+  string bssid = 4;
+  bool connected = 5;
+}
+message ScanResponse {
+  repeated WifiNetwork networks = 1;
+  int64 scanned_at_unix = 2;
+  bool from_cache = 3;
+}
+
+message HardwareServiceGetStatusRequest {}
+message HardwareServiceGetStatusResponse {
+  bool battery_available = 1;
+  string battery_status = 2;
+  int32 battery_percent = 3;
+  int64 battery_voltage_microvolts = 4;
+  bool thermal_available = 5;
+  double soc_temperature_celsius = 6;
+  bool brightness_available = 7;
+  int64 brightness = 8;
+  int64 brightness_max = 9;
+  bool audio_available = 10;
+  string audio_detail = 11;
+  bool volume_available = 12;
+  int32 volume_percent = 13;
+}
+
+message SetVolumeRequest {
+  int32 percent = 1;
+  bool confirmed = 2;
+}
+message SetVolumeResponse { int32 percent = 1; }
+
+message SetBrightnessRequest {
+  int32 percent = 1;
+  bool confirmed = 2;
+}
+message SetBrightnessResponse { int64 value = 1; }
+
+enum PowerActionKind {
+  POWER_ACTION_KIND_UNSPECIFIED = 0;
+  POWER_ACTION_KIND_REBOOT = 1;
+  POWER_ACTION_KIND_POWEROFF = 2;
+}
+message PowerActionRequest {
+  PowerActionKind action = 1;
+  bool confirmed = 2;
+}
+message PowerActionResponse { string message = 1; }
+
+service SystemService {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc ListCapabilities(ListCapabilitiesRequest) returns (ListCapabilitiesResponse);
+}
+
+service WifiService {
+  rpc GetStatus(WifiServiceGetStatusRequest) returns (WifiServiceGetStatusResponse);
+  rpc Scan(ScanRequest) returns (ScanResponse);
+}
+
+service HardwareService {
+  rpc GetStatus(HardwareServiceGetStatusRequest) returns (HardwareServiceGetStatusResponse);
+  rpc SetBrightness(SetBrightnessRequest) returns (SetBrightnessResponse);
+  rpc SetVolume(SetVolumeRequest) returns (SetVolumeResponse);
+  rpc PowerAction(PowerActionRequest) returns (PowerActionResponse);
+}

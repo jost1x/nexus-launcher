@@ -17,6 +17,9 @@ import (
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 	"connectrpc.com/grpchealth/v2"
+	nexusv1connect "nexusd/gen/nexus/v1/nexusv1connect"
+	"nexusd/internal/platform"
+	"nexusd/internal/services"
 	"nexusd/internal/socketpath"
 )
 
@@ -51,9 +54,13 @@ func run() error {
 	defer removeSocket(*socket)
 
 	checker := grpchealth.NewStaticChecker()
-	checker.SetStatus("", grpchealth.StatusServing)
+	setHealthStatus(checker, grpchealth.StatusServing)
 	connectServer := connect.NewServer()
 	grpchealth.Register(connectServer, checker)
+	adapter := platform.NewLinux()
+	nexusv1connect.RegisterSystemServiceHandler(connectServer, services.System{Adapter: adapter})
+	nexusv1connect.RegisterWifiServiceHandler(connectServer, &services.Wifi{Adapter: adapter})
+	nexusv1connect.RegisterHardwareServiceHandler(connectServer, services.Hardware{Adapter: adapter})
 
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, connectServer)
@@ -84,7 +91,7 @@ func run() error {
 	case <-ctx.Done():
 	}
 
-	checker.SetStatus("", grpchealth.StatusNotServing)
+	setHealthStatus(checker, grpchealth.StatusNotServing)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
@@ -97,6 +104,13 @@ func run() error {
 	}
 	slog.Info("shutdown complete")
 	return nil
+}
+
+func setHealthStatus(checker *grpchealth.StaticChecker, status grpchealth.Status) {
+	checker.SetStatus("", status)
+	checker.SetStatus(nexusv1connect.SystemServiceName, status)
+	checker.SetStatus(nexusv1connect.WifiServiceName, status)
+	checker.SetStatus(nexusv1connect.HardwareServiceName, status)
 }
 
 func listenUnix(path string) (net.Listener, error) {
