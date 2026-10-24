@@ -56,8 +56,8 @@ No avanzar automáticamente a una fase posterior. La biblioteca de ROMs, el lanz
 
 ## Commits
 
-- Crear commits únicamente cuando el usuario lo solicite explícitamente. No asumir que una petición de implementar, desplegar o subir cambios autoriza por sí sola a crear commits.
-- Hacer push a GitHub u otros remotos únicamente cuando el usuario lo solicite explícitamente; crear un commit no autoriza a publicarlo.
+- Crear commits locales únicamente cuando el usuario solicite subir cambios o crear un commit. Una petición de implementar o desplegar no autoriza por sí sola a crear commits.
+- Si el usuario pide subir cambios sin especificar destino, crear solo un commit local. Hacer push a GitHub u otro remoto únicamente cuando el usuario lo solicite explícitamente; crear un commit local no autoriza a publicarlo.
 - Escribir todos los mensajes de commit en inglés y seguir el formato Conventional Commits: `<type>(<scope>): <imperative summary>`; el scope es opcional cuando no aporta claridad.
 - Elegir un tipo acorde al cambio, por ejemplo `feat`, `fix`, `docs`, `build`, `ci`, `refactor`, `test` o `chore`.
 - Separar los commits por responsabilidad: cada commit debe representar un cambio coherente y revisable. No mezclar responsabilidades independientes en un mismo commit.
