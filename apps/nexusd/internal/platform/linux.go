@@ -258,7 +258,7 @@ func (p *Linux) Capabilities(ctx context.Context) *nexusv1.ListCapabilitiesRespo
 		{Name: "hardware.brightness", Available: false, Detail: "No backlight sysfs entry detected"},
 		{Name: "hardware.audio", Available: false, Detail: "No ALSA device or amixer detected"},
 		{Name: "hardware.volume", Available: p.LookPath != nil && look(p.LookPath, "amixer"), Detail: "Requires an ALSA Master mixer control"},
-		{Name: "hardware.power_action", Available: p.LookPath != nil && look(p.LookPath, "systemctl"), Detail: "Requires explicit CLI confirmation and system authorization"},
+		{Name: "hardware.power_action", Available: p.LookPath != nil && look(p.LookPath, "sudo") && look(p.LookPath, "systemctl"), Detail: "Requires explicit CLI confirmation and a restricted sudoers rule"},
 	}
 	wifiAvailable := false
 	if _, err := p.wifiInterface(""); err == nil {
@@ -635,14 +635,18 @@ func (p *Linux) PowerAction(ctx context.Context, action nexusv1.PowerActionKind,
 		return connect.NewError(connect.CodeInvalidArgument, "power action must be reboot or poweroff")
 	}
 	if p.LookPath == nil {
-		return connect.NewError(connect.CodeFailedPrecondition, "cannot locate systemctl")
+		return connect.NewError(connect.CodeFailedPrecondition, "cannot locate sudo or systemctl")
+	}
+	sudo, err := p.LookPath("sudo")
+	if err != nil {
+		return connect.NewError(connect.CodeFailedPrecondition, "power actions require sudo")
 	}
 	systemctl, err := p.LookPath("systemctl")
 	if err != nil {
 		return connect.NewError(connect.CodeFailedPrecondition, "power actions require systemctl")
 	}
-	if _, err := p.Run(ctx, systemctl, command); err != nil {
-		return connect.NewError(connect.CodePermissionDenied, fmt.Sprintf("systemctl %s failed: %v", command, err))
+	if _, err := p.Run(ctx, sudo, "-n", systemctl, command); err != nil {
+		return connect.NewError(connect.CodePermissionDenied, fmt.Sprintf("sudo systemctl %s failed: %v", command, err))
 	}
 	return nil
 }

@@ -207,12 +207,18 @@ func TestPowerActionUsesAllowlistedSystemctlAction(t *testing.T) {
 	var gotArgs []string
 	adapter := &Linux{
 		LookPath: func(name string) (string, error) {
-			if name == "systemctl" {
+			switch name {
+			case "sudo":
+				return "/usr/bin/sudo", nil
+			case "systemctl":
 				return "/usr/bin/systemctl", nil
 			}
 			return "", os.ErrNotExist
 		},
-		Run: func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		Run: func(_ context.Context, executable string, args ...string) ([]byte, error) {
+			if executable != "/usr/bin/sudo" {
+				t.Fatalf("got executable %q, want /usr/bin/sudo", executable)
+			}
 			gotArgs = append([]string(nil), args...)
 			return nil, nil
 		},
@@ -220,7 +226,7 @@ func TestPowerActionUsesAllowlistedSystemctlAction(t *testing.T) {
 	if err := adapter.PowerAction(context.Background(), 1, true); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(gotArgs, " ") != "reboot" {
-		t.Fatalf("got args %q, want reboot", gotArgs)
+	if strings.Join(gotArgs, " ") != "-n /usr/bin/systemctl reboot" {
+		t.Fatalf("got args %q, want -n /usr/bin/systemctl reboot", gotArgs)
 	}
 }

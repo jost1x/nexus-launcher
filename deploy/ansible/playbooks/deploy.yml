@@ -14,6 +14,8 @@
     nexus_service_name: nexusd
     nexus_service_unit: /etc/systemd/system/nexusd.service
     nexus_backlight_rule: /etc/udev/rules.d/90-nexus-backlight.rules
+    nexus_power_sudoers: /etc/sudoers.d/nexusd-power
+    nexus_backlight_group: nexusd-backlight
 
   tasks:
     - name: Require the expected ARM64 target architecture
@@ -42,6 +44,16 @@
           - nexus_daemon_binary.stat.exists
           - nexus_cli_binary.stat.exists
         fail_msg: Run `make build-arm64` from apps/nexusd before deploying.
+
+    - name: Ensure hardware access groups exist
+      become: true
+      ansible.builtin.group:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - input
+        - audio
+        - "{{ nexus_backlight_group }}"
 
     - name: Create private directories for the prototype
       ansible.builtin.file:
@@ -111,7 +123,7 @@
       args:
         executable: /bin/sh
 
-    - name: Allow the input group to change only the backlight level
+    - name: Allow the dedicated backlight group to change only the backlight level
       become: true
       ansible.builtin.copy:
         dest: "{{ nexus_backlight_rule }}"
@@ -119,7 +131,7 @@
         group: root
         mode: "0644"
         content: |
-          SUBSYSTEM=="backlight", ACTION=="add", RUN+="/usr/bin/chgrp input /sys%p/brightness", RUN+="/usr/bin/chmod 0660 /sys%p/brightness"
+          SUBSYSTEM=="backlight", ACTION=="add", RUN+="/usr/bin/chgrp {{ nexus_backlight_group }} /sys%p/brightness", RUN+="/usr/bin/chmod 0660 /sys%p/brightness"
       register: nexus_backlight_rule_copy
 
     - name: Apply the backlight access rule to detected backlights
@@ -132,6 +144,16 @@
           - --subsystem-match=backlight
       when: nexus_backlight_rule_copy.changed
       changed_when: true
+
+    - name: Allow only confirmed reboot and poweroff commands without a password
+      become: true
+      ansible.builtin.copy:
+        dest: "{{ nexus_power_sudoers }}"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: /usr/sbin/visudo -cf %s
+        content: "{{ ansible_facts.user_id }} ALL=(root) NOPASSWD: /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff\n"
 
     - name: Install the nexusd systemd unit with Wi-Fi scan capability
       become: true
@@ -149,7 +171,7 @@
           Type=simple
           User={{ ansible_facts.user_id }}
           Group={{ ansible_facts.user_gid }}
-          SupplementaryGroups=input
+          SupplementaryGroups=input,audio,{{ nexus_backlight_group }}
           Environment=HOME={{ ansible_facts.user_dir }}
           Environment=XDG_CACHE_HOME={{ ansible_facts.user_dir }}/.cache
           ExecStart={{ nexus_remote_bin_dir }}/nexusd --socket {{ nexus_socket }}
@@ -157,8 +179,10 @@
           RestartSec=2s
           AmbientCapabilities=CAP_NET_ADMIN
           CapabilityBoundingSet=CAP_NET_ADMIN
-          NoNewPrivileges=yes
-          ReadWritePaths=/sys/class/backlight/backlight/brightness
+          # Required so sudo can raise its effective UID; sudoers limits this to reboot/poweroff.
+          NoNewPrivileges=no
+          ProtectSystem=strict
+          ReadWritePaths={{ nexus_remote_state_dir }} /sys/class/backlight/backlight/brightness
           PrivateTmp=yes
           ProtectKernelTunables=yes
           ProtectKernelModules=yes
@@ -177,6 +201,39 @@
         daemon_reload: "{{ nexus_service_unit_copy.changed }}"
         enabled: true
         state: restarted
+
+    - name: Verify reboot is authorized without executing it
+      ansible.builtin.command:
+        argv:
+          - sudo
+          - -n
+          - -l
+          - --
+          - /usr/bin/systemctl
+          - reboot
+      changed_when: false
+
+    - name: Verify poweroff is authorized without executing it
+      ansible.builtin.command:
+        argv:
+          - sudo
+          - -n
+          - -l
+          - --
+          - /usr/bin/systemctl
+          - poweroff
+      changed_when: false
+
+    - name: Verify unrelated privileged commands cannot run without a password
+      ansible.builtin.command:
+        argv:
+          - sudo
+          - -k
+          - -n
+          - /usr/bin/id
+      register: nexus_unrestricted_sudo_check
+      changed_when: false
+      failed_when: nexus_unrestricted_sudo_check.rc == 0
 
     - name: Wait for the daemon health RPC to respond
       ansible.builtin.command:

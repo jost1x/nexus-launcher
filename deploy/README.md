@@ -2,7 +2,7 @@
 
 Área para desplegar NEXUS en la compilación Armbian propia para R36S. El prototipo se despliega por SSH con Ansible en espacio de usuario; el empaquetado e integración en la imagen se realizan en una fase posterior.
 
-La configuración está en [`ansible/`](ansible/README.md). El playbook compila-dependiente copia `nexusd` y `nexusctl` ARM64, inicia el daemon temporalmente y consulta su salud. No usa `become`, instala servicios ni escribe en el sistema de archivos de la imagen. `stop.yml` detiene el proceso del prototipo.
+La configuración está en [`ansible/`](ansible/README.md). El playbook copia `nexusd` y `nexusctl` ARM64 por SSH, instala reglas de permisos acotados y una unidad systemd para el prototipo, y consulta su salud. No modifica el build de la imagen Armbian. `stop.yml` detiene y deshabilita el servicio.
 
 ## Fases
 

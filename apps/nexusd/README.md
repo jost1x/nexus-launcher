@@ -59,7 +59,7 @@ Para contratos, instala Buf v1.75.0, `protoc-gen-go` v1.36.11 y `protoc-gen-conn
 
 ## Flujo de prototipado en hardware
 
-Durante el prototipo se compila y despliega `nexusd` y `nexusctl` en la R36S mediante SSH. Ansible instala una unidad systemd de desarrollo para conceder al daemon `CAP_NET_ADMIN`; es una modificación persistente de la consola, separada del build de la imagen Armbian, y se puede detener/deshabilitar con `deploy/ansible/playbooks/stop.yml`. Las credenciales y secretos de acceso no se guardan en el repositorio.
+Durante el prototipo se compila y despliega `nexusd` y `nexusctl` en la R36S mediante SSH. Ansible instala una unidad systemd para conceder al daemon `CAP_NET_ADMIN`, acceso de lectura a botones y ALSA, y escritura al atributo de brillo mediante un grupo dedicado. `sudoers` limita la elevación sin contraseña a `systemctl reboot` y `systemctl poweroff`; la CLI mantiene `--confirm`. Estas modificaciones persistentes de la consola son independientes del build de la imagen Armbian y se pueden detener/deshabilitar con `deploy/ansible/playbooks/stop.yml`. Las credenciales y secretos de acceso no se guardan en el repositorio.
 
 ## Fases
 
