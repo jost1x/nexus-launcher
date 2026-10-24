@@ -39,7 +39,10 @@ Estado de las funcionalidades de NEXUS. La marca `[x]` indica implementación y 
 - [x] Control físico de volumen: `Vol+` y `Vol−` cambian el nivel en pasos de 5 puntos porcentuales.
 - [x] Control físico de brillo: `F + Vol+` y `F + Vol−` cambian el nivel en pasos de 5 puntos porcentuales.
 - [x] Confirmar en la R36S que F genera el evento Linux `BTN_TRIGGER_HAPPY5` (código 708); volumen genera los códigos 115 y 114.
-- [ ] Registrar lecturas de batería/carga en varios estados reales, incluido cargador conectado mientras carga.
+- [x] Detectar carga con `current_avg` positivo cuando el cargador está conectado, como respaldo para el estado `Not charging` incorrecto del driver RK817.
+- [x] Leer `voltage_avg` cuando el driver no expone `voltage_now`.
+- [ ] Validar después del despliegue que `nexusctl hardware status` reporte `Charging` y el voltaje real en la consola.
+- [ ] Registrar lecturas de batería/carga en varios estados reales, incluido cargador desconectado y carga completada.
 - [ ] Probar reinicio y apagado confirmados en hardware, con un procedimiento de recuperación.
 - [ ] Determinar por qué `voltage_now` de batería reporta `0` en la consola, o documentar que no está disponible.
 
@@ -65,5 +68,6 @@ Estado de las funcionalidades de NEXUS. La marca `[x]` indica implementación y 
 - Las consultas de salud, sistema, Wi-Fi y hardware se realizaron por SSH contra la R36S con Armbian.
 - El daemon y la CLI se compilaron para Linux ARM64.
 - Los controles físicos de volumen y brillo se probaron en la consola; la combinación de brillo usa el evento F medido en hardware.
+- Una muestra de 25 s con cargador conectado mostró `charger_online=1`, `current_avg` de aproximadamente 250 mA y `charge_now` en aumento (+1548 µAh); el kernel seguía reportando `Not charging`.
 - El escaneo Wi-Fi requiere `CAP_NET_ADMIN`, asignada a la unidad del daemon por Ansible.
 - No se han ejecutado pruebas de reinicio/apagado ni existe todavía una UI funcional.

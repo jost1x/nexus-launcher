@@ -450,6 +450,7 @@ func parseScan(output []byte) *nexusv1.ScanResponse {
 
 func (p *Linux) HardwareStatus(ctx context.Context) (*nexusv1.HardwareServiceGetStatusResponse, error) {
 	status := &nexusv1.HardwareServiceGetStatusResponse{}
+	var batteryCurrentMicroamps int64
 	if entries, _ := filepath.Glob(filepath.Join(p.SysRoot, "class/power_supply/*")); len(entries) > 0 {
 		for _, entry := range entries {
 			typeBytes, _ := os.ReadFile(filepath.Join(entry, "type"))
@@ -459,13 +460,16 @@ func (p *Linux) HardwareStatus(ctx context.Context) (*nexusv1.HardwareServiceGet
 				state, _ := os.ReadFile(filepath.Join(entry, "status"))
 				status.BatteryStatus = strings.TrimSpace(string(state))
 				status.BatteryCharging = strings.EqualFold(status.BatteryStatus, "Charging")
+				batteryCurrentMicroamps, _ = readInt(filepath.Join(entry, "current_avg"))
 				capacity, _ := os.ReadFile(filepath.Join(entry, "capacity"))
 				if v, err := strconv.Atoi(strings.TrimSpace(string(capacity))); err == nil {
 					status.BatteryPercent = int32(v)
 				}
-				voltage, _ := os.ReadFile(filepath.Join(entry, "voltage_now"))
-				if v, err := strconv.ParseInt(strings.TrimSpace(string(voltage)), 10, 64); err == nil {
-					status.BatteryVoltageMicrovolts = v
+				for _, voltageAttribute := range []string{"voltage_now", "voltage_avg"} {
+					if v, err := readInt(filepath.Join(entry, voltageAttribute)); err == nil {
+						status.BatteryVoltageMicrovolts = v
+						break
+					}
 				}
 				continue
 			}
@@ -480,6 +484,14 @@ func (p *Linux) HardwareStatus(ctx context.Context) (*nexusv1.HardwareServiceGet
 			if value, err := strconv.Atoi(strings.TrimSpace(string(online))); err == nil && value == 1 {
 				status.ChargerConnected = true
 			}
+		}
+	}
+	// On the R36S RK817, charge_now and current_avg increase while charging
+	// even though the driver's status attribute can incorrectly say Not charging.
+	if status.ChargerConnected && !strings.EqualFold(status.BatteryStatus, "Full") && batteryCurrentMicroamps > 0 {
+		status.BatteryCharging = true
+		if strings.EqualFold(status.BatteryStatus, "Not charging") {
+			status.BatteryStatus = "Charging"
 		}
 	}
 	if zones, _ := filepath.Glob(filepath.Join(p.SysRoot, "class/thermal/thermal_zone*")); len(zones) > 0 {
