@@ -171,7 +171,7 @@
           Type=simple
           User={{ ansible_facts.user_id }}
           Group={{ ansible_facts.user_gid }}
-          SupplementaryGroups=input,audio,{{ nexus_backlight_group }}
+          SupplementaryGroups=input audio {{ nexus_backlight_group }}
           Environment=HOME={{ ansible_facts.user_dir }}
           Environment=XDG_CACHE_HOME={{ ansible_facts.user_dir }}/.cache
           ExecStart={{ nexus_remote_bin_dir }}/nexusd --socket {{ nexus_socket }}
