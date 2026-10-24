@@ -203,21 +203,18 @@ func TestPowerActionRequiresConfirmation(t *testing.T) {
 	}
 }
 
-func TestPowerActionUsesAllowlistedSystemctlAction(t *testing.T) {
+func TestPowerActionCallsLogindOverSystemBus(t *testing.T) {
 	var gotArgs []string
 	adapter := &Linux{
 		LookPath: func(name string) (string, error) {
-			switch name {
-			case "sudo":
-				return "/usr/bin/sudo", nil
-			case "systemctl":
-				return "/usr/bin/systemctl", nil
+			if name == "busctl" {
+				return "/usr/bin/busctl", nil
 			}
 			return "", os.ErrNotExist
 		},
 		Run: func(_ context.Context, executable string, args ...string) ([]byte, error) {
-			if executable != "/usr/bin/sudo" {
-				t.Fatalf("got executable %q, want /usr/bin/sudo", executable)
+			if executable != "/usr/bin/busctl" {
+				t.Fatalf("got executable %q, want /usr/bin/busctl", executable)
 			}
 			gotArgs = append([]string(nil), args...)
 			return nil, nil
@@ -226,7 +223,8 @@ func TestPowerActionUsesAllowlistedSystemctlAction(t *testing.T) {
 	if err := adapter.PowerAction(context.Background(), 1, true); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(gotArgs, " ") != "-n /usr/bin/systemctl reboot" {
-		t.Fatalf("got args %q, want -n /usr/bin/systemctl reboot", gotArgs)
+	wantArgs := "--system call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager Reboot b false"
+	if strings.Join(gotArgs, " ") != wantArgs {
+		t.Fatalf("got args %q, want %s", gotArgs, wantArgs)
 	}
 }

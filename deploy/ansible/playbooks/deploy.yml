@@ -14,7 +14,7 @@
     nexus_service_name: nexusd
     nexus_service_unit: /etc/systemd/system/nexusd.service
     nexus_backlight_rule: /etc/udev/rules.d/90-nexus-backlight.rules
-    nexus_power_sudoers: /etc/sudoers.d/nexusd-power
+    nexus_power_polkit_rule: /etc/polkit-1/rules.d/60-nexus-power.rules
     nexus_backlight_group: nexusd-backlight
 
   tasks:
@@ -54,6 +54,18 @@
         - input
         - audio
         - "{{ nexus_backlight_group }}"
+
+    - name: Install polkit for passwordless logind power actions
+      become: true
+      ansible.builtin.package:
+        name: polkitd
+        state: present
+
+    - name: Ensure systemd-logind is running
+      become: true
+      ansible.builtin.systemd_service:
+        name: systemd-logind
+        state: started
 
     - name: Create private directories for the prototype
       ansible.builtin.file:
@@ -145,15 +157,31 @@
       when: nexus_backlight_rule_copy.changed
       changed_when: true
 
-    - name: Allow only confirmed reboot and poweroff commands without a password
+    - name: Allow the SSH user to reboot or power off through logind without a password
       become: true
       ansible.builtin.copy:
-        dest: "{{ nexus_power_sudoers }}"
+        dest: "{{ nexus_power_polkit_rule }}"
         owner: root
         group: root
-        mode: "0440"
-        validate: /usr/sbin/visudo -cf %s
-        content: "{{ ansible_facts.user_id }} ALL=(root) NOPASSWD: /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff\n"
+        mode: "0644"
+        content: |
+          polkit.addRule(function(action, subject) {
+            var powerActions = [
+              "org.freedesktop.login1.reboot",
+              "org.freedesktop.login1.reboot-multiple-sessions",
+              "org.freedesktop.login1.power-off",
+              "org.freedesktop.login1.power-off-multiple-sessions"
+            ];
+            if (subject.user === "{{ ansible_facts.user_id }}" && powerActions.indexOf(action.id) !== -1) {
+              return polkit.Result.YES;
+            }
+          });
+
+    - name: Remove the superseded passwordless sudo power rule
+      become: true
+      ansible.builtin.file:
+        path: /etc/sudoers.d/nexusd-power
+        state: absent
 
     - name: Install the nexusd systemd unit with Wi-Fi scan capability
       become: true
@@ -179,8 +207,8 @@
           RestartSec=2s
           AmbientCapabilities=CAP_NET_ADMIN
           CapabilityBoundingSet=CAP_NET_ADMIN
-          # Required so sudo can raise its effective UID; sudoers limits this to reboot/poweroff.
-          NoNewPrivileges=no
+          # Power actions use logind/polkit and do not need setuid privilege escalation.
+          NoNewPrivileges=yes
           ProtectSystem=strict
           ReadWritePaths={{ nexus_remote_state_dir }} /sys/class/backlight/backlight/brightness
           PrivateTmp=yes
@@ -202,29 +230,18 @@
         enabled: true
         state: restarted
 
-    - name: Verify reboot is authorized without executing it
-      ansible.builtin.command:
-        argv:
-          - sudo
-          - -n
-          - -l
-          - --
-          - /usr/bin/systemctl
-          - reboot
+    - name: Verify polkit authorization for confirmed logind power actions
+      ansible.builtin.shell: "pkcheck --action-id {{ item | quote }} --process $$"
+      args:
+        executable: /bin/sh
+      loop:
+        - org.freedesktop.login1.reboot
+        - org.freedesktop.login1.reboot-multiple-sessions
+        - org.freedesktop.login1.power-off
+        - org.freedesktop.login1.power-off-multiple-sessions
       changed_when: false
 
-    - name: Verify poweroff is authorized without executing it
-      ansible.builtin.command:
-        argv:
-          - sudo
-          - -n
-          - -l
-          - --
-          - /usr/bin/systemctl
-          - poweroff
-      changed_when: false
-
-    - name: Verify unrelated privileged commands cannot run without a password
+    - name: Verify unrelated privileged commands remain unauthorized through sudo
       ansible.builtin.command:
         argv:
           - sudo

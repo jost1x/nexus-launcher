@@ -258,7 +258,7 @@ func (p *Linux) Capabilities(ctx context.Context) *nexusv1.ListCapabilitiesRespo
 		{Name: "hardware.brightness", Available: false, Detail: "No backlight sysfs entry detected"},
 		{Name: "hardware.audio", Available: false, Detail: "No ALSA device or amixer detected"},
 		{Name: "hardware.volume", Available: p.LookPath != nil && look(p.LookPath, "amixer"), Detail: "Requires an ALSA Master mixer control"},
-		{Name: "hardware.power_action", Available: p.LookPath != nil && look(p.LookPath, "sudo") && look(p.LookPath, "systemctl"), Detail: "Requires explicit CLI confirmation and a restricted sudoers rule"},
+		{Name: "hardware.power_action", Available: p.LookPath != nil && look(p.LookPath, "busctl"), Detail: "Requires explicit CLI confirmation and a restricted systemd-logind polkit rule"},
 	}
 	wifiAvailable := false
 	if _, err := p.wifiInterface(""); err == nil {
@@ -635,18 +635,30 @@ func (p *Linux) PowerAction(ctx context.Context, action nexusv1.PowerActionKind,
 		return connect.NewError(connect.CodeInvalidArgument, "power action must be reboot or poweroff")
 	}
 	if p.LookPath == nil {
-		return connect.NewError(connect.CodeFailedPrecondition, "cannot locate sudo or systemctl")
+		return connect.NewError(connect.CodeFailedPrecondition, "cannot locate busctl")
 	}
-	sudo, err := p.LookPath("sudo")
+	busctl, err := p.LookPath("busctl")
 	if err != nil {
-		return connect.NewError(connect.CodeFailedPrecondition, "power actions require sudo")
+		return connect.NewError(connect.CodeFailedPrecondition, "power actions require busctl and systemd-logind")
 	}
-	systemctl, err := p.LookPath("systemctl")
-	if err != nil {
-		return connect.NewError(connect.CodeFailedPrecondition, "power actions require systemctl")
+	method := "Reboot"
+	if command == "poweroff" {
+		method = "PowerOff"
 	}
-	if _, err := p.Run(ctx, sudo, "-n", systemctl, command); err != nil {
-		return connect.NewError(connect.CodePermissionDenied, fmt.Sprintf("sudo systemctl %s failed: %v", command, err))
+	args := []string{
+		"--system", "call",
+		"org.freedesktop.login1",
+		"/org/freedesktop/login1",
+		"org.freedesktop.login1.Manager",
+		method,
+		"b", "false",
+	}
+	if output, err := p.Run(ctx, busctl, args...); err != nil {
+		detail := strings.TrimSpace(string(output))
+		if detail == "" {
+			detail = err.Error()
+		}
+		return connect.NewError(connect.CodePermissionDenied, fmt.Sprintf("systemd-logind %s failed: %s", command, detail))
 	}
 	return nil
 }
