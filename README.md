@@ -4,7 +4,7 @@ Launcher modular para R36S, con foco inicial en navegación, personalización y 
 
 ## Estado actual
 
-`nexusd` y `nexusctl` tienen RPC de salud, información del sistema, capacidades, estado/escaneo Wi-Fi y estado/control de hardware. Compilan para Linux AMD64 y ARM64. Salud, sistema, Wi-Fi y lecturas de hardware se validaron por SSH en la R36S. `iw` está instalado en `/usr/sbin`; Ansible ejecuta `nexusd` como servicio systemd con `CAP_NET_ADMIN`, y el escaneo Wi-Fi respondió en el hardware. El control de volumen se probó; brillo fue denegado por permisos de sysfs. No se probaron apagado ni reinicio. La interoperabilidad con un futuro cliente C++ y la implementación de `nexus-ui` siguen pendientes.
+`nexusd` y `nexusctl` tienen RPC de salud, información del sistema, capacidades, estado/escaneo Wi-Fi y estado/control de hardware. Compilan para Linux AMD64 y ARM64. Salud, sistema, Wi-Fi y lecturas de hardware se validaron por SSH en la R36S. Ansible despliega el daemon como servicio systemd con los permisos necesarios para escanear Wi-Fi y ajustar el brillo. Los botones físicos de volumen y la combinación F + Volumen para brillo funcionan en la consola. No se probaron apagado ni reinicio. La interoperabilidad con un futuro cliente C++ y la implementación de `nexus-ui` siguen pendientes. Consulta el estado detallado en [`CHECKLIST.md`](CHECKLIST.md).
 
 ## Mapa del repositorio
 
