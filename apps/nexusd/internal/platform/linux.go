@@ -309,21 +309,33 @@ func (p *Linux) HardwareStatus(ctx context.Context) (*nexusv1.HardwareServiceGet
 	if entries, _ := filepath.Glob(filepath.Join(p.SysRoot, "class/power_supply/*")); len(entries) > 0 {
 		for _, entry := range entries {
 			typeBytes, _ := os.ReadFile(filepath.Join(entry, "type"))
-			if strings.TrimSpace(string(typeBytes)) != "Battery" {
+			supplyType := strings.TrimSpace(string(typeBytes))
+			if strings.EqualFold(supplyType, "Battery") {
+				status.BatteryAvailable = true
+				state, _ := os.ReadFile(filepath.Join(entry, "status"))
+				status.BatteryStatus = strings.TrimSpace(string(state))
+				status.BatteryCharging = strings.EqualFold(status.BatteryStatus, "Charging")
+				capacity, _ := os.ReadFile(filepath.Join(entry, "capacity"))
+				if v, err := strconv.Atoi(strings.TrimSpace(string(capacity))); err == nil {
+					status.BatteryPercent = int32(v)
+				}
+				voltage, _ := os.ReadFile(filepath.Join(entry, "voltage_now"))
+				if v, err := strconv.ParseInt(strings.TrimSpace(string(voltage)), 10, 64); err == nil {
+					status.BatteryVoltageMicrovolts = v
+				}
 				continue
 			}
-			status.BatteryAvailable = true
-			state, _ := os.ReadFile(filepath.Join(entry, "status"))
-			status.BatteryStatus = strings.TrimSpace(string(state))
-			capacity, _ := os.ReadFile(filepath.Join(entry, "capacity"))
-			if v, err := strconv.Atoi(strings.TrimSpace(string(capacity))); err == nil {
-				status.BatteryPercent = int32(v)
+			if !isChargerSupply(supplyType) {
+				continue
 			}
-			voltage, _ := os.ReadFile(filepath.Join(entry, "voltage_now"))
-			if v, err := strconv.ParseInt(strings.TrimSpace(string(voltage)), 10, 64); err == nil {
-				status.BatteryVoltageMicrovolts = v
+			online, err := os.ReadFile(filepath.Join(entry, "online"))
+			if err != nil {
+				continue
 			}
-			break
+			status.ChargerAvailable = true
+			if value, err := strconv.Atoi(strings.TrimSpace(string(online))); err == nil && value == 1 {
+				status.ChargerConnected = true
+			}
 		}
 	}
 	if zones, _ := filepath.Glob(filepath.Join(p.SysRoot, "class/thermal/thermal_zone*")); len(zones) > 0 {
@@ -355,6 +367,15 @@ func (p *Linux) HardwareStatus(ctx context.Context) (*nexusv1.HardwareServiceGet
 		status.VolumePercent = int32(percent)
 	}
 	return status, nil
+}
+
+func isChargerSupply(supplyType string) bool {
+	switch strings.ToLower(strings.TrimSpace(supplyType)) {
+	case "mains", "usb", "usb_dcp", "usb_c", "usb_pd", "usb_pd_drp", "wireless":
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Linux) SetVolume(ctx context.Context, percent int, confirmed bool) error {

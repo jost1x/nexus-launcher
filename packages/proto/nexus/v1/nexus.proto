@@ -70,6 +70,9 @@ message HardwareServiceGetStatusResponse {
   string audio_detail = 11;
   bool volume_available = 12;
   int32 volume_percent = 13;
+  bool charger_available = 14;
+  bool charger_connected = 15;
+  bool battery_charging = 16;
 }
 
 message SetVolumeRequest {

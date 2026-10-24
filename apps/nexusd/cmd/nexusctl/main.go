@@ -221,7 +221,9 @@ func run() error {
 func printOutput(format string, value any) error {
 	if format == "json" {
 		if result, ok := value.(*nexusv1.ScanResponse); ok {
-			return json.NewEncoder(os.Stdout).Encode(struct {
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(struct {
 				Networks      []*nexusv1.WifiNetwork `json:"networks"`
 				ScannedAtUnix int64                  `json:"scanned_at_unix"`
 				FromCache     bool                   `json:"from_cache"`
@@ -229,6 +231,45 @@ func printOutput(format string, value any) error {
 				Networks:      result.Networks,
 				ScannedAtUnix: result.ScannedAtUnix,
 				FromCache:     result.FromCache,
+			})
+		}
+		if result, ok := value.(*nexusv1.HardwareServiceGetStatusResponse); ok {
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(struct {
+				BatteryAvailable         bool    `json:"battery_available"`
+				BatteryStatus            string  `json:"battery_status"`
+				BatteryPercent           int32   `json:"battery_percent"`
+				BatteryVoltageMicrovolts int64   `json:"battery_voltage_microvolts"`
+				ThermalAvailable         bool    `json:"thermal_available"`
+				SocTemperatureCelsius    float64 `json:"soc_temperature_celsius"`
+				BrightnessAvailable      bool    `json:"brightness_available"`
+				Brightness               int64   `json:"brightness"`
+				BrightnessMax            int64   `json:"brightness_max"`
+				AudioAvailable           bool    `json:"audio_available"`
+				AudioDetail              string  `json:"audio_detail"`
+				VolumeAvailable          bool    `json:"volume_available"`
+				VolumePercent            int32   `json:"volume_percent"`
+				ChargerAvailable         bool    `json:"charger_available"`
+				ChargerConnected         bool    `json:"charger_connected"`
+				BatteryCharging          bool    `json:"battery_charging"`
+			}{
+				BatteryAvailable:         result.BatteryAvailable,
+				BatteryStatus:            result.BatteryStatus,
+				BatteryPercent:           result.BatteryPercent,
+				BatteryVoltageMicrovolts: result.BatteryVoltageMicrovolts,
+				ThermalAvailable:         result.ThermalAvailable,
+				SocTemperatureCelsius:    result.SocTemperatureCelsius,
+				BrightnessAvailable:      result.BrightnessAvailable,
+				Brightness:               result.Brightness,
+				BrightnessMax:            result.BrightnessMax,
+				AudioAvailable:           result.AudioAvailable,
+				AudioDetail:              result.AudioDetail,
+				VolumeAvailable:          result.VolumeAvailable,
+				VolumePercent:            result.VolumePercent,
+				ChargerAvailable:         result.ChargerAvailable,
+				ChargerConnected:         result.ChargerConnected,
+				BatteryCharging:          result.BatteryCharging,
 			})
 		}
 		encoder := json.NewEncoder(os.Stdout)
@@ -332,8 +373,11 @@ func printOutput(format string, value any) error {
 		return writeKeyValues(
 			[2]string{"BATTERY AVAILABLE", strconv.FormatBool(result.BatteryAvailable)},
 			[2]string{"BATTERY STATUS", result.BatteryStatus},
+			[2]string{"BATTERY CHARGING", strconv.FormatBool(result.BatteryCharging)},
 			[2]string{"BATTERY PERCENT", fmt.Sprintf("%d%%", result.BatteryPercent)},
 			[2]string{"BATTERY VOLTAGE MICROVOLTS", strconv.FormatInt(result.BatteryVoltageMicrovolts, 10)},
+			[2]string{"CHARGER AVAILABLE", strconv.FormatBool(result.ChargerAvailable)},
+			[2]string{"CHARGER CONNECTED", strconv.FormatBool(result.ChargerConnected)},
 			[2]string{"THERMAL AVAILABLE", strconv.FormatBool(result.ThermalAvailable)},
 			[2]string{"SOC TEMPERATURE CELSIUS", fmt.Sprintf("%.1f", result.SocTemperatureCelsius)},
 			[2]string{"BRIGHTNESS AVAILABLE", strconv.FormatBool(result.BrightnessAvailable)},

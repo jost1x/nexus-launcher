@@ -729,6 +729,9 @@ type HardwareServiceGetStatusResponse struct {
 	AudioDetail              string                 `protobuf:"bytes,11,opt,name=audio_detail,json=audioDetail,proto3" json:"audio_detail,omitempty"`
 	VolumeAvailable          bool                   `protobuf:"varint,12,opt,name=volume_available,json=volumeAvailable,proto3" json:"volume_available,omitempty"`
 	VolumePercent            int32                  `protobuf:"varint,13,opt,name=volume_percent,json=volumePercent,proto3" json:"volume_percent,omitempty"`
+	ChargerAvailable         bool                   `protobuf:"varint,14,opt,name=charger_available,json=chargerAvailable,proto3" json:"charger_available,omitempty"`
+	ChargerConnected         bool                   `protobuf:"varint,15,opt,name=charger_connected,json=chargerConnected,proto3" json:"charger_connected,omitempty"`
+	BatteryCharging          bool                   `protobuf:"varint,16,opt,name=battery_charging,json=batteryCharging,proto3" json:"battery_charging,omitempty"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
 }
@@ -852,6 +855,27 @@ func (x *HardwareServiceGetStatusResponse) GetVolumePercent() int32 {
 		return x.VolumePercent
 	}
 	return 0
+}
+
+func (x *HardwareServiceGetStatusResponse) GetChargerAvailable() bool {
+	if x != nil {
+		return x.ChargerAvailable
+	}
+	return false
+}
+
+func (x *HardwareServiceGetStatusResponse) GetChargerConnected() bool {
+	if x != nil {
+		return x.ChargerConnected
+	}
+	return false
+}
+
+func (x *HardwareServiceGetStatusResponse) GetBatteryCharging() bool {
+	if x != nil {
+		return x.BatteryCharging
+	}
+	return false
 }
 
 type SetVolumeRequest struct {
@@ -1191,7 +1215,7 @@ const file_nexus_v1_nexus_proto_rawDesc = "" +
 	"\x0fscanned_at_unix\x18\x02 \x01(\x03R\rscannedAtUnix\x12\x1d\n" +
 	"\n" +
 	"from_cache\x18\x03 \x01(\bR\tfromCache\"!\n" +
-	"\x1fHardwareServiceGetStatusRequest\"\xda\x04\n" +
+	"\x1fHardwareServiceGetStatusRequest\"\xdf\x05\n" +
 	" HardwareServiceGetStatusResponse\x12+\n" +
 	"\x11battery_available\x18\x01 \x01(\bR\x10batteryAvailable\x12%\n" +
 	"\x0ebattery_status\x18\x02 \x01(\tR\rbatteryStatus\x12'\n" +
@@ -1208,7 +1232,10 @@ const file_nexus_v1_nexus_proto_rawDesc = "" +
 	" \x01(\bR\x0eaudioAvailable\x12!\n" +
 	"\faudio_detail\x18\v \x01(\tR\vaudioDetail\x12)\n" +
 	"\x10volume_available\x18\f \x01(\bR\x0fvolumeAvailable\x12%\n" +
-	"\x0evolume_percent\x18\r \x01(\x05R\rvolumePercent\"J\n" +
+	"\x0evolume_percent\x18\r \x01(\x05R\rvolumePercent\x12+\n" +
+	"\x11charger_available\x18\x0e \x01(\bR\x10chargerAvailable\x12+\n" +
+	"\x11charger_connected\x18\x0f \x01(\bR\x10chargerConnected\x12)\n" +
+	"\x10battery_charging\x18\x10 \x01(\bR\x0fbatteryCharging\"J\n" +
 	"\x10SetVolumeRequest\x12\x18\n" +
 	"\apercent\x18\x01 \x01(\x05R\apercent\x12\x1c\n" +
 	"\tconfirmed\x18\x02 \x01(\bR\tconfirmed\"-\n" +

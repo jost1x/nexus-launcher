@@ -1,6 +1,6 @@
 # Contratos Protobuf
 
-Los archivos `.proto` de esta carpeta son la fuente canónica de los servicios entre `nexus-ui` y `nexusd`. Los contratos actuales están en `nexus.v1` e incluyen salud gRPC estándar más sistema, capacidades, estado/escaneo Wi-Fi y hardware. El estado Wi-Fi informa el SSID y BSSID asociados; los resultados de escaneo incluyen BSSID y marcan el punto de acceso actual. Las solicitudes de escaneo pueden forzar una actualización; las respuestas indican la hora y si se usó caché.
+Los archivos `.proto` de esta carpeta son la fuente canónica de los servicios entre `nexus-ui` y `nexusd`. Los contratos actuales están en `nexus.v1` e incluyen salud gRPC estándar más sistema, capacidades, estado/escaneo Wi-Fi y hardware. El estado Wi-Fi informa el SSID y BSSID asociados; los resultados de escaneo incluyen BSSID y marcan el punto de acceso actual. Las solicitudes de escaneo pueden forzar una actualización; las respuestas indican la hora y si se usó caché. El estado de hardware informa porcentaje/estado de batería y detección/conexión del cargador.
 
 ## Validación y generación
 
