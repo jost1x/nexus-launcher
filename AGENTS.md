@@ -56,7 +56,15 @@ No avanzar automáticamente a una fase posterior. La biblioteca de ROMs, el lanz
 
 ## Commits
 
+- Crear commits únicamente cuando el usuario lo solicite explícitamente. No asumir que una petición de implementar, desplegar o subir cambios autoriza por sí sola a crear commits.
+- Hacer push a GitHub u otros remotos únicamente cuando el usuario lo solicite explícitamente; crear un commit no autoriza a publicarlo.
 - Escribir todos los mensajes de commit en inglés y seguir el formato Conventional Commits: `<type>(<scope>): <imperative summary>`; el scope es opcional cuando no aporta claridad.
 - Elegir un tipo acorde al cambio, por ejemplo `feat`, `fix`, `docs`, `build`, `ci`, `refactor`, `test` o `chore`.
 - Separar los commits por responsabilidad: cada commit debe representar un cambio coherente y revisable. No mezclar responsabilidades independientes en un mismo commit.
 - Mantener el resumen breve, específico y en modo imperativo; usar el cuerpo para explicar contexto cuando sea necesario.
+
+## Operaciones externas y validación
+
+- Aplicar cambios persistentes en la consola o desplegar servicios únicamente cuando el usuario lo solicite explícitamente. No ejecutar reboot ni poweroff como parte de las pruebas.
+- Informar con precisión qué verificaciones se ejecutaron, cuáles pasaron y cuáles no pudieron completarse. Distinguir resultados locales de los observados en la R36S y no declarar como verificada una capacidad que no se haya probado.
+- Revisar `git status` antes de editar. No incluir, sobrescribir ni revertir cambios ajenos a la tarea.
