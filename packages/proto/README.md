@@ -1,15 +1,16 @@
 # Contratos Protobuf
 
-Fuente canónica de Protocol Buffers v3 para la comunicación entre `nexus-ui` y `nexusd`. Los paquetes se versionan por dominio, por ejemplo `nexus.health.v1` y `nexus.system.v1`.
+Los archivos `.proto` de esta carpeta son la fuente canónica de los servicios entre `nexus-ui` y `nexusd`. Los contratos actuales están en `nexus.v1` e incluyen salud gRPC estándar más sistema, capacidades, estado/escaneo Wi-Fi y hardware. El estado Wi-Fi informa el SSID y BSSID asociados; los resultados de escaneo incluyen BSSID y marcan el punto de acceso actual. Las solicitudes de escaneo pueden forzar una actualización; las respuestas indican la hora y si se usó caché.
 
-## Dominios previstos
+## Validación y generación
 
-Salud, Wi-Fi, sistema, audio, pantalla y energía. Añadir mensajes y RPC solo cuando una fase los necesite.
+Instala Buf v1.75.0, `protoc-gen-go` v1.36.11 y `protoc-gen-connect-go` v2.0.0 en el `PATH`. Desde la raíz del repositorio:
 
-## Fases
+```sh
+make -C apps/nexusd lint-proto
+make -C apps/nexusd generate
+```
 
-1. Configurar Buf y validación reproducible durante la fase de herramientas del proyecto.
-2. Definir HealthService para verificar la interoperabilidad Go sobre UDS con `nexusctl`; añadir el cliente C++ más adelante, al iniciar la UI.
-3. Añadir contratos de sistema, Wi-Fi y hardware junto con sus implementaciones y pruebas antes de comenzar `nexus-ui`.
+El código generado Go queda en `apps/nexusd/gen/nexus/v1`; no se deben editar esos archivos manualmente. La generación C++ se añadirá cuando comience la implementación de `nexus-ui`.
 
-No duplicar definiciones ni código generado entre aplicaciones. Evitar incluir eventos de navegación o interacción visual en estos contratos.
+Evitar eventos de navegación e interacción visual en estos contratos y no duplicar definiciones entre aplicaciones.

@@ -14,7 +14,28 @@ El formato y lint del código Go se ejecutan mediante los hooks pre-commit defin
 
 ## CLI de desarrollo
 
-`nexusctl` es el cliente de `nexusd` para consultar salud, capacidades y los servicios disponibles conforme se implementen. En esta primera fase incluye `nexusctl health [SERVICE]`; sin `SERVICE` consulta la salud del daemon. Se ejecuta en la R36S y usa el socket UDS local; los fallos de conexión y errores RPC incluyen contexto para diagnóstico. No se expone RPC por TCP.
+`nexusctl` es el cliente de `nexusd`; se ejecuta en la R36S y usa el socket UDS local. No se expone RPC por TCP. Los comandos disponibles son:
+
+```sh
+nexusctl health [SERVICE]
+nexusctl system info
+nexusctl system capabilities
+nexusctl wifi status
+nexusctl wifi scan [INTERFACE]
+nexusctl wifi scan --refresh [INTERFACE]
+nexusctl --format json wifi scan
+nexusctl wifi scan
+nexusctl hardware status
+nexusctl --confirm hardware brightness set PERCENT
+nexusctl --confirm hardware volume set PERCENT
+nexusctl --confirm hardware reboot|poweroff
+```
+
+`health` acepta `nexus.v1.SystemService`, `nexus.v1.WifiService` y `nexus.v1.HardwareService`, además de la salud global sin argumento. Los errores RPC incluyen el código y el contexto de la operación. Las escrituras de brillo, volumen y energía requieren `--confirm`; la CLI y el daemon validan rangos y capacidades antes de actuar. No se guarda información de red ni se vuelcan secretos en logs.
+
+La salida predeterminada es una tabla legible; usa `--format json` cuando necesites JSON, por ejemplo para scripts. `nexusctl wifi scan` ordena las redes por señal descendente y luego por SSID; las redes sin señal reportada aparecen al final. La columna `CURRENT` marca el punto de acceso al que está asociada la consola, comparando BSSID. El formato se indica antes del subcomando, por ejemplo `nexusctl --format json wifi scan`.
+
+`nexusd` conserva los resultados del último escaneo Wi-Fi en memoria durante 15 segundos por interfaz. Una llamada normal reutiliza esos resultados dentro de ese plazo; `nexusctl wifi scan --refresh` fuerza un escaneo nuevo. La respuesta incluye `scanned_at_unix` y `from_cache`; la tabla también muestra cuándo se escaneó y su antigüedad. Los resultados no se escriben en disco.
 
 ## Desarrollo local
 
@@ -30,16 +51,22 @@ make build
 ./bin/nexusctl health
 ```
 
+Para contratos, instala Buf v1.75.0, `protoc-gen-go` v1.36.11 y `protoc-gen-connect-go` v2.0.0; luego ejecuta `make lint-proto` y `make generate`. El código generado se conserva en el repositorio para builds sin generadores.
+
 ## Flujo de prototipado en hardware
 
-Durante el prototipo se podrá compilar, copiar y ejecutar `nexusd` y `nexusctl` en la R36S mediante SSH, consultar logs y repetir las pruebas. Este despliegue de desarrollo es temporal y separado de la imagen Armbian; no implica instalar servicios ni modificar la configuración persistente del sistema. Las credenciales y secretos de acceso no se guardan en el repositorio.
+Durante el prototipo se compila y despliega `nexusd` y `nexusctl` en la R36S mediante SSH. Ansible instala una unidad systemd de desarrollo para conceder al daemon `CAP_NET_ADMIN`; es una modificación persistente de la consola, separada del build de la imagen Armbian, y se puede detener/deshabilitar con `deploy/ansible/playbooks/stop.yml`. Las credenciales y secretos de acceso no se guardan en el repositorio.
 
 ## Fases
 
-1. Establecer proceso, transporte UDS, servicio estándar gRPC Health, logging y cierre ordenado; validar RPC con `nexusctl`. Esta fase inicia antes del desarrollo de `nexus-ui`.
-2. Añadir métricas de sistema y capacidades con adaptadores Linux y mocks; consultables desde `nexusctl`.
-3. Añadir Wi-Fi tras verificar los mecanismos disponibles en Armbian; admitir ausencia de adaptador y cancelación, con operaciones accesibles desde `nexusctl`.
-4. Añadir audio, pantalla y energía con validación y confirmación para acciones destructivas; exponer las operaciones soportadas en `nexusctl`.
+1. **Base:** proceso, UDS, gRPC Health, logging, cierre ordenado y CLI. Validado localmente y desplegado por Ansible en la R36S.
+2. **Sistema y capacidades:** información Linux desde `os-release`/`procfs`; capacidades detectadas desde sysfs y herramientas disponibles, con indicador de detección observada en R36S.
+3. **Wi-Fi:** estado de interfaz, SSID asociado y escaneo cancelable con `iw`, con errores claros cuando falten herramienta, interfaz o permisos. La consola ya tiene `iw` v5.19 en `/usr/sbin`; `nexusd` busca también en las rutas estándar de `sbin`, aunque no estén en el `PATH` del proceso. El escaneo necesita permiso de administración de red. La conexión/desconexión de redes queda supeditada a un mecanismo de Armbian que permita tratar las credenciales de forma segura.
+4. **Hardware:** lecturas de batería, temperatura, backlight y ALSA; controles de brillo y volumen con confirmación; reinicio/apagado explícitos y confirmados.
 5. Completar pruebas del daemon y la CLI por SSH en la R36S. La integración persistente, empaquetado e inicio en la imagen Armbian pertenecen a la Fase 8 del proyecto.
 
 No asumir NetworkManager, rutas sysfs, controles ALSA ni permisos root. Usar `r36s-os` como referencia de evidencia del sistema y hardware, indicar explícitamente las capacidades no soportadas y separar pruebas de escritorio, SSH y hardware.
+
+### Observaciones en la consola
+
+En una consulta SSH del 2026-10-24, `/proc/device-tree/model` identificó `R36S (Panel 4 software profile)` y `/etc/os-release` informó Debian 12 con kernel `6.18.58-current-rockchip64`. `nexusctl health` y la salud de los tres servicios, además de `system info`, `system capabilities`, `wifi status` y `hardware status`, respondieron por UDS en la consola. `wlan0` está routable según `systemd-networkd`. `iw` v5.19 está instalado en `/usr/sbin`; `nexusd` busca esta ruta aunque no esté en el `PATH`. Ansible instaló y activó `nexusd.service` con `CAP_NET_ADMIN`; el proceso corre como `r36s`, con esa capacidad efectiva. Tras aumentar el timeout predeterminado de la CLI a 15 segundos, `nexusctl wifi scan` completó por UDS. La tabla marca la red actual usando el BSSID. El parser se corrigió para quitar el sufijo `(on wlan0)`; el binario actualizado está copiado en la consola, pendiente reiniciar `nexusd` para validar la marca. Las lecturas observadas incluyeron batería al 100 %, temperatura SoC alrededor de 53 °C, brillo 833/1666 y volumen ALSA 79 %. `--confirm hardware volume set 79` respondió correctamente y mantuvo la lectura en 79 %. El cambio de brillo al 50 % fue rechazado por permisos de sysfs. No se ejecutaron reboot/poweroff.

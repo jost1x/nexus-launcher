@@ -1,11 +1,12 @@
 # Despliegue remoto con Ansible
 
-El playbook despliega los binarios ARM64 de `nexusd` y `nexusctl` a la cuenta SSH de la R36S, inicia el daemon como proceso temporal y valida el RPC de salud por el socket UDS local. No requiere privilegios root, instala una unidad systemd ni guarda credenciales en el repositorio.
+El playbook despliega los binarios ARM64 de `nexusd` y `nexusctl` a la cuenta SSH de la R36S, instala y habilita una unidad systemd para el daemon, y valida el RPC de salud por el socket UDS local. El daemon corre con la cuenta SSH de despliegue, con `CAP_NET_ADMIN` asignada por systemd para permitir el escaneo Wi-Fi. La CLI sigue siendo de usuario y consulta salud, sistema, capacidades, Wi-Fi y estado de hardware por el socket local.
 
 ## Requisitos
 
 - Ansible Core instalado en el equipo de desarrollo.
 - Acceso SSH funcional a la R36S y su clave de host aceptada en `known_hosts`.
+- La cuenta SSH puede ejecutar `sudo` para instalar y administrar `/etc/systemd/system/nexusd.service`.
 - Los binarios ARM64 construidos desde `apps/nexusd`.
 
 ## Preparar el inventario
@@ -26,14 +27,16 @@ cd deploy/ansible
 ansible-playbook playbooks/deploy.yml
 ```
 
-El playbook copia los ejecutables a `~/.local/opt/nexusd`, crea enlaces `nexusd` y `nexusctl` en `~/.local/bin`, agrega ese directorio al `PATH` de login en `~/.profile`, guarda PID y log en `~/.cache/nexusd`, inicia el daemon si no está activo y reintenta la consulta de salud hasta obtener respuesta. Abre una nueva sesión SSH para usar `nexusctl` como comando. Para detener el daemon:
+Si Ansible solicita contraseña para `sudo`, agrega `-K` al comando. El playbook copia los ejecutables a `~/.local/opt/nexusd`, crea enlaces `nexusd` y `nexusctl` en `~/.local/bin`, agrega ese directorio al `PATH` de login en `~/.profile` e instala la unidad de sistema `nexusd.service`. systemd ejecuta el daemon como el usuario SSH, le asigna `CAP_NET_ADMIN` y limita su conjunto de capacidades a esa capacidad. La CLI no requiere `sudo`. Abre una nueva sesión SSH para usar `nexusctl` como comando. Para detener y deshabilitar el servicio:
 
 ```sh
 ansible-playbook playbooks/stop.yml
 ```
 
-Los logs de la consola quedan en `~/.cache/nexusd/nexusd.log`. Los binarios, enlaces y el cambio de `PATH` son de usuario y reversibles; el proceso es temporal. No se instala un servicio ni se integra en la imagen Armbian.
+Los logs del daemon se consultan con `sudo journalctl -u nexusd`; su socket UDS y estado quedan en `~/.cache/nexusd`. `playbooks/stop.yml` detiene y deshabilita el servicio, sin borrar binarios ni la unidad.
 
 ## Validación en consola
 
-2026-10-24: el despliegue Ansible en la R36S detectó arquitectura ARM64, copió ambos binarios e inició `nexusd` como el usuario `r36s`. Una sesión de login resolvió `nexusctl` como `/home/r36s/.local/bin/nexusctl` y `nexusctl health` respondió `serving`. El proceso queda temporalmente activo hasta detenerlo con `playbooks/stop.yml` o reiniciar la consola.
+La consola ya tiene `iw` v5.19 en `/usr/sbin`; `nexusd` busca esta ruta aunque no forme parte del `PATH` del proceso. `CAP_NET_ADMIN` permite el escaneo al proceso `nexusd`. Es una capacidad amplia de administración de red, por lo que se concede únicamente a la unidad del daemon y no a `nexusctl` ni a la sesión SSH. La integración final deberá revisar si conviene mantener esta asignación o aislar el escaneo en un auxiliar más acotado.
+
+2026-10-24: el despliegue en la R36S confirmó servicio `nexusd.service` activo como `r36s`, `CAP_NET_ADMIN` efectiva y RPC de salud respondiendo. La consola reportó Debian 12, kernel `6.18.58-current-rockchip64`, interfaz `wlan0` routable por `systemd-networkd`, batería RK817, backlight, sensor térmico y ALSA `Master`. `iw` v5.19 está en `/usr/sbin`. El primer escaneo excedió el timeout original de 3 segundos; se subió el default de `nexusctl` a 15 segundos. `nexusctl wifi scan` terminó correctamente en la consola. El parser del BSSID se corrigió para eliminar el sufijo `(on wlan0)`; el binario actualizado está copiado, pendiente reiniciar `nexusd` para que el cambio se active y validar la marca `CURRENT`. Los logs del servicio se consultan con `sudo journalctl -u nexusd`.

@@ -4,7 +4,7 @@ Launcher modular para R36S, con foco inicial en navegación, personalización y 
 
 ## Estado actual
 
-El repositorio conserva la estructura y el alcance documentados. La fase inicial de `nexusd` ya tiene un servidor de salud sobre UDS y la CLI `nexusctl`; ambos compilan para Linux AMD64 y ARM64. La prueba de llamada RPC, la interoperabilidad con el cliente C++ y la prueba en la R36S siguen pendientes. No hay todavía una implementación de `nexus-ui`.
+`nexusd` y `nexusctl` tienen RPC de salud, información del sistema, capacidades, estado/escaneo Wi-Fi y estado/control de hardware. Compilan para Linux AMD64 y ARM64. Salud, sistema, Wi-Fi y lecturas de hardware se validaron por SSH en la R36S. `iw` está instalado en `/usr/sbin`; Ansible ejecuta `nexusd` como servicio systemd con `CAP_NET_ADMIN`, y el escaneo Wi-Fi respondió en el hardware. El control de volumen se probó; brillo fue denegado por permisos de sysfs. No se probaron apagado ni reinicio. La interoperabilidad con un futuro cliente C++ y la implementación de `nexus-ui` siguen pendientes.
 
 ## Mapa del repositorio
 
