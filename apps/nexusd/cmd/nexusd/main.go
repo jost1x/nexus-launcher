@@ -55,9 +55,17 @@ func run() error {
 
 	checker := grpchealth.NewStaticChecker()
 	setHealthStatus(checker, grpchealth.StatusServing)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	connectServer := connect.NewServer()
 	grpchealth.Register(connectServer, checker)
 	adapter := platform.NewLinux()
+	go func() {
+		if err := adapter.WatchVolumeKeys(ctx); err != nil {
+			slog.Warn("physical volume controls are unavailable", "error", err)
+		}
+	}()
 	nexusv1connect.RegisterSystemServiceHandler(connectServer, services.System{Adapter: adapter})
 	nexusv1connect.RegisterWifiServiceHandler(connectServer, &services.Wifi{Adapter: adapter})
 	nexusv1connect.RegisterHardwareServiceHandler(connectServer, services.Hardware{Adapter: adapter})
@@ -72,9 +80,6 @@ func run() error {
 		Protocols:         protocols,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	serveErr := make(chan error, 1)
 	go func() {

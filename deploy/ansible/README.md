@@ -1,6 +1,6 @@
 # Despliegue remoto con Ansible
 
-El playbook despliega los binarios ARM64 de `nexusd` y `nexusctl` a la cuenta SSH de la R36S, instala y habilita una unidad systemd para el daemon, y valida el RPC de salud por el socket UDS local. El daemon corre con la cuenta SSH de despliegue, con `CAP_NET_ADMIN` asignada por systemd para permitir el escaneo Wi-Fi. La CLI sigue siendo de usuario y consulta salud, sistema, capacidades, Wi-Fi y estado de hardware por el socket local.
+El playbook despliega los binarios ARM64 de `nexusd` y `nexusctl` a la cuenta SSH de la R36S, instala y habilita una unidad systemd para el daemon, y valida el RPC de salud por el socket UDS local. El daemon corre con la cuenta SSH de despliegue, con `CAP_NET_ADMIN` asignada por systemd para permitir el escaneo Wi-Fi y acceso suplementario al grupo `input` para leer botones. Una regla udev permite al grupo `input` escribir el atributo de brillo del backlight; `ReadWritePaths` exceptúa solo ese atributo de la protección de solo lectura sobre `/sys`. Los botones `F1 + Vol+/−` ajustan el brillo, si F1 corresponde al evento esperado en el hardware; `Vol+/−` ajustan el audio. La CLI sigue siendo de usuario y consulta salud, sistema, capacidades, Wi-Fi y estado de hardware por el socket local.
 
 ## Requisitos
 
@@ -27,7 +27,7 @@ cd deploy/ansible
 ansible-playbook playbooks/deploy.yml
 ```
 
-Si Ansible solicita contraseña para `sudo`, agrega `-K` al comando. El playbook copia los ejecutables a `~/.local/opt/nexusd`, crea enlaces `nexusd` y `nexusctl` en `~/.local/bin`, agrega ese directorio al `PATH` de login en `~/.profile` e instala la unidad de sistema `nexusd.service`. systemd ejecuta el daemon como el usuario SSH, le asigna `CAP_NET_ADMIN` y limita su conjunto de capacidades a esa capacidad. La CLI no requiere `sudo`. Abre una nueva sesión SSH para usar `nexusctl` como comando. Para detener y deshabilitar el servicio:
+Si Ansible solicita contraseña para `sudo`, agrega `-K` al comando. El playbook copia los ejecutables a `~/.local/opt/nexusd`, crea enlaces `nexusd` y `nexusctl` en `~/.local/bin`, agrega ese directorio al `PATH` de login en `~/.profile`, instala la regla udev de backlight e instala la unidad de sistema `nexusd.service`. systemd ejecuta el daemon como el usuario SSH, le asigna `CAP_NET_ADMIN`, añade el grupo `input` y limita su conjunto de capacidades a `CAP_NET_ADMIN`. `ReadWritePaths` permite escribir solo el atributo de brillo dentro de `/sys`. La CLI no requiere `sudo`. Abre una nueva sesión SSH para usar `nexusctl` como comando. Para detener y deshabilitar el servicio:
 
 ```sh
 ansible-playbook playbooks/stop.yml

@@ -3,8 +3,10 @@ package platform
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"connectrpc.com/connect/v2"
 	nexusv1 "nexusd/gen/nexus/v1"
@@ -21,12 +24,153 @@ import (
 type Linux struct {
 	SysRoot  string
 	ProcRoot string
+	DevRoot  string
 	LookPath func(string) (string, error)
 	Run      func(context.Context, string, ...string) ([]byte, error)
 }
 
 func NewLinux() *Linux {
-	return &Linux{SysRoot: "/sys", ProcRoot: "/proc", LookPath: findCommand, Run: runCommand}
+	return &Linux{SysRoot: "/sys", ProcRoot: "/proc", DevRoot: "/dev", LookPath: findCommand, Run: runCommand}
+}
+
+const (
+	inputEventKey  = 1
+	keyVolumeDown  = 114
+	keyVolumeUp    = 115
+	keyFunctionF1  = 704 // BTN_TRIGGER_HAPPY1 in the R36S DTS
+	volumeKeyStep  = 5
+	inputEventSize = 24 // struct input_event on the supported 64-bit Linux targets.
+)
+
+// WatchVolumeKeys applies the R36S gpio-keys volume buttons to the ALSA master.
+// It leaves the input device available to other consumers and ignores unrelated keys.
+func (p *Linux) WatchVolumeKeys(ctx context.Context) error {
+	device, err := p.volumeKeyDevice()
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(device, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return fmt.Errorf("open volume key device %s: %w", device, err)
+	}
+	defer f.Close()
+	slog.Info("listening for volume keys", "device", device)
+	buffer := make([]byte, inputEventSize*16)
+	functionDown := false
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil
+		}
+		n, readErr := f.Read(buffer)
+		if readErr != nil {
+			if errors.Is(readErr, syscall.EAGAIN) || errors.Is(readErr, syscall.EWOULDBLOCK) {
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(25 * time.Millisecond):
+					continue
+				}
+			}
+			return fmt.Errorf("read volume key device: %w", readErr)
+		}
+		for offset := 0; offset+inputEventSize <= n; offset += inputEventSize {
+			event := buffer[offset : offset+inputEventSize]
+			typ := binary.LittleEndian.Uint16(event[16:18])
+			code := binary.LittleEndian.Uint16(event[18:20])
+			value := int32(binary.LittleEndian.Uint32(event[20:24]))
+			if typ != inputEventKey || (value != 1 && value != 2) {
+				if typ == inputEventKey && code == keyFunctionF1 && value == 0 {
+					functionDown = false
+				}
+				continue
+			}
+			if code == keyFunctionF1 {
+				functionDown = true
+				continue
+			}
+			delta := 0
+			switch code {
+			case keyVolumeUp:
+				delta = volumeKeyStep
+			case keyVolumeDown:
+				delta = -volumeKeyStep
+			default:
+				continue
+			}
+			var err error
+			if functionDown {
+				err = p.adjustBrightness(delta)
+			} else {
+				err = p.adjustVolume(ctx, delta)
+			}
+			if err != nil {
+				slog.Warn("hardware key could not change level", "error", err)
+			}
+		}
+	}
+}
+
+func (p *Linux) volumeKeyDevice() (string, error) {
+	entries, err := filepath.Glob(filepath.Join(p.SysRoot, "class/input/event*/device/name"))
+	if err != nil {
+		return "", err
+	}
+	for _, namePath := range entries {
+		name, err := os.ReadFile(namePath)
+		if err != nil || strings.TrimSpace(string(name)) != "gpio-keys" {
+			continue
+		}
+		event := filepath.Base(filepath.Dir(filepath.Dir(namePath)))
+		device := filepath.Join(p.DevRoot, "input", event)
+		if _, err := os.Stat(device); err == nil {
+			return device, nil
+		}
+	}
+	return "", errors.New("gpio-keys input device not found")
+}
+
+func (p *Linux) adjustVolume(ctx context.Context, delta int) error {
+	current, err := p.volumePercent(ctx)
+	if err != nil {
+		return err
+	}
+	next := current + delta
+	if next < 0 {
+		next = 0
+	} else if next > 100 {
+		next = 100
+	}
+	if next == current {
+		return nil
+	}
+	return p.SetVolume(ctx, next, true)
+}
+
+func (p *Linux) adjustBrightness(delta int) error {
+	entry, err := p.backlight()
+	if err != nil {
+		return err
+	}
+	current, err := readInt(filepath.Join(entry, "brightness"))
+	if err != nil {
+		return err
+	}
+	maximum, err := readInt(filepath.Join(entry, "max_brightness"))
+	if err != nil || maximum <= 0 {
+		return errors.New("backlight maximum is unavailable")
+	}
+	percent := int(current * 100 / maximum)
+	next := percent + delta
+	if next < 0 {
+		next = 0
+	} else if next > 100 {
+		next = 100
+	}
+	if next == percent {
+		return nil
+	}
+	_, err = p.SetBrightness(next, true)
+	return err
 }
 
 func findCommand(name string) (string, error) {
