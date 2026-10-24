@@ -1,0 +1,154 @@
+---
+- name: Deploy and start the temporary NEXUS prototype
+  hosts: r36s_targets
+  gather_facts: true
+  become: false
+
+  vars:
+    nexus_local_bin_dir: "{{ playbook_dir }}/../../../apps/nexusd/bin"
+    nexus_remote_bin_dir: "{{ ansible_facts.user_dir }}/.local/opt/nexusd"
+    nexus_user_bin_dir: "{{ ansible_facts.user_dir }}/.local/bin"
+    nexus_remote_state_dir: "{{ ansible_facts.user_dir }}/.cache/nexusd"
+    nexus_socket: "{{ nexus_remote_state_dir }}/nexusd.sock"
+    nexus_log: "{{ nexus_remote_state_dir }}/nexusd.log"
+    nexus_pidfile: "{{ nexus_remote_state_dir }}/nexusd.pid"
+
+  tasks:
+    - name: Require the expected ARM64 target architecture
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.architecture in ["aarch64", "armv8l"]
+        fail_msg: "Target architecture is {{ ansible_facts.architecture }}; build and deploy to a 64-bit ARM target."
+
+    - name: Check that the ARM64 daemon binary exists on the controller
+      ansible.builtin.stat:
+        path: "{{ nexus_local_bin_dir }}/nexusd"
+      delegate_to: localhost
+      become: false
+      register: nexus_daemon_binary
+
+    - name: Check that the ARM64 CLI binary exists on the controller
+      ansible.builtin.stat:
+        path: "{{ nexus_local_bin_dir }}/nexusctl"
+      delegate_to: localhost
+      become: false
+      register: nexus_cli_binary
+
+    - name: Require both ARM64 binaries before deploying
+      ansible.builtin.assert:
+        that:
+          - nexus_daemon_binary.stat.exists
+          - nexus_cli_binary.stat.exists
+        fail_msg: Run `make build-arm64` from apps/nexusd before deploying.
+
+    - name: Create private directories for the prototype
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - "{{ nexus_remote_bin_dir }}"
+        - "{{ nexus_user_bin_dir }}"
+        - "{{ nexus_remote_state_dir }}"
+
+    - name: Copy nexusd to the console
+      ansible.builtin.copy:
+        src: "{{ nexus_local_bin_dir }}/nexusd"
+        dest: "{{ nexus_remote_bin_dir }}/nexusd"
+        mode: "0755"
+      register: nexus_daemon_copy
+
+    - name: Copy nexusctl to the console
+      ansible.builtin.copy:
+        src: "{{ nexus_local_bin_dir }}/nexusctl"
+        dest: "{{ nexus_remote_bin_dir }}/nexusctl"
+        mode: "0755"
+
+    - name: Link executables into the user's command directory
+      ansible.builtin.file:
+        src: "{{ nexus_remote_bin_dir }}/{{ item }}"
+        dest: "{{ nexus_user_bin_dir }}/{{ item }}"
+        state: link
+      loop:
+        - nexusd
+        - nexusctl
+
+    - name: Add the user's command directory to the login PATH
+      ansible.builtin.lineinfile:
+        path: "{{ ansible_facts.user_dir }}/.profile"
+        line: 'export PATH="$HOME/.local/bin:$PATH"'
+        create: true
+        mode: "0644"
+
+    - name: Restart the tracked prototype after a daemon update
+      ansible.builtin.shell: |
+        set -eu
+        pidfile={{ nexus_pidfile | quote }}
+        binary={{ nexus_remote_bin_dir | quote }}/nexusd
+        if [ -f "$pidfile" ]; then
+          pid=$(cat "$pidfile")
+          if [ -r "/proc/$pid/cmdline" ]; then
+            command_line=$(tr '\0' ' ' < "/proc/$pid/cmdline")
+            case "$command_line" in
+              *"$binary"*)
+                kill -TERM "$pid"
+                i=0
+                while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 5 ]; do
+                  sleep 1
+                  i=$((i + 1))
+                done
+                if kill -0 "$pid" 2>/dev/null; then
+                  echo "nexusd did not stop after SIGTERM" >&2
+                  exit 1
+                fi
+                ;;
+            esac
+          fi
+          rm -f "$pidfile"
+        fi
+      args:
+        executable: /bin/sh
+      when: nexus_daemon_copy.changed
+
+    - name: Start nexusd as the SSH user without installing a persistent service
+      ansible.builtin.shell: |
+        set -eu
+        binary={{ nexus_remote_bin_dir | quote }}/nexusd
+        pidfile={{ nexus_pidfile | quote }}
+        socket={{ nexus_socket | quote }}
+        log={{ nexus_log | quote }}
+
+        if [ -f "$pidfile" ]; then
+          old_pid=$(cat "$pidfile")
+          if [ -r "/proc/$old_pid/cmdline" ]; then
+            old_command=$(tr '\0' ' ' < "/proc/$old_pid/cmdline")
+            case "$old_command" in
+              *"$binary"*) exit 0 ;;
+            esac
+          fi
+          rm -f "$pidfile"
+        fi
+
+        nohup "$binary" --socket "$socket" >"$log" 2>&1 </dev/null &
+        echo $! > "$pidfile"
+      args:
+        executable: /bin/sh
+
+    - name: Wait for the daemon health RPC to respond
+      ansible.builtin.command:
+        argv:
+          - "{{ nexus_remote_bin_dir }}/nexusctl"
+          - --socket
+          - "{{ nexus_socket }}"
+          - --timeout
+          - 2s
+          - health
+      register: nexus_health
+      changed_when: false
+      retries: 10
+      delay: 1
+      until: nexus_health.rc == 0
+
+    - name: Report daemon health
+      ansible.builtin.debug:
+        msg: "nexusd health: {{ nexus_health.stdout }}"

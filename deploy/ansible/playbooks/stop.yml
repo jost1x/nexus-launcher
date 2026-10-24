@@ -1,0 +1,39 @@
+---
+- name: Stop the temporary NEXUS prototype
+  hosts: r36s_targets
+  gather_facts: true
+  become: false
+
+  vars:
+    nexus_remote_bin_dir: "{{ ansible_facts.user_dir }}/.local/opt/nexusd"
+    nexus_remote_state_dir: "{{ ansible_facts.user_dir }}/.cache/nexusd"
+    nexus_pidfile: "{{ nexus_remote_state_dir }}/nexusd.pid"
+
+  tasks:
+    - name: Stop only the nexusd process recorded by this prototype
+      ansible.builtin.shell: |
+        set -eu
+        pidfile={{ nexus_pidfile | quote }}
+        binary={{ nexus_remote_bin_dir | quote }}/nexusd
+        if [ ! -f "$pidfile" ]; then exit 0; fi
+
+        pid=$(cat "$pidfile")
+        if [ -r "/proc/$pid/cmdline" ]; then
+          command_line=$(tr '\0' ' ' < "/proc/$pid/cmdline")
+          case "$command_line" in
+            *"$binary"*) kill -TERM "$pid" ;;
+            *) rm -f "$pidfile"; exit 0 ;;
+          esac
+          i=0
+          while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 5 ]; do
+            sleep 1
+            i=$((i + 1))
+          done
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "nexusd did not stop after SIGTERM" >&2
+            exit 1
+          fi
+        fi
+        rm -f "$pidfile"
+      args:
+        executable: /bin/sh
