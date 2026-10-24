@@ -1,5 +1,5 @@
 ---
-- name: Deploy and start the temporary NEXUS prototype
+- name: Deploy and start the NEXUS prototype service
   hosts: r36s_targets
   gather_facts: true
   become: false
@@ -10,8 +10,9 @@
     nexus_user_bin_dir: "{{ ansible_facts.user_dir }}/.local/bin"
     nexus_remote_state_dir: "{{ ansible_facts.user_dir }}/.cache/nexusd"
     nexus_socket: "{{ nexus_remote_state_dir }}/nexusd.sock"
-    nexus_log: "{{ nexus_remote_state_dir }}/nexusd.log"
     nexus_pidfile: "{{ nexus_remote_state_dir }}/nexusd.pid"
+    nexus_service_name: nexusd
+    nexus_service_unit: /etc/systemd/system/nexusd.service
 
   tasks:
     - name: Require the expected ARM64 target architecture
@@ -80,7 +81,7 @@
         create: true
         mode: "0644"
 
-    - name: Restart the tracked prototype after a daemon update
+    - name: Stop the legacy temporary prototype after a daemon update
       ansible.builtin.shell: |
         set -eu
         pidfile={{ nexus_pidfile | quote }}
@@ -108,31 +109,49 @@
         fi
       args:
         executable: /bin/sh
-      when: nexus_daemon_copy.changed
 
-    - name: Start nexusd as the SSH user without installing a persistent service
-      ansible.builtin.shell: |
-        set -eu
-        binary={{ nexus_remote_bin_dir | quote }}/nexusd
-        pidfile={{ nexus_pidfile | quote }}
-        socket={{ nexus_socket | quote }}
-        log={{ nexus_log | quote }}
+    - name: Install the nexusd systemd unit with Wi-Fi scan capability
+      become: true
+      ansible.builtin.copy:
+        dest: "{{ nexus_service_unit }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=NEXUS system and hardware daemon
+          After=local-fs.target
 
-        if [ -f "$pidfile" ]; then
-          old_pid=$(cat "$pidfile")
-          if [ -r "/proc/$old_pid/cmdline" ]; then
-            old_command=$(tr '\0' ' ' < "/proc/$old_pid/cmdline")
-            case "$old_command" in
-              *"$binary"*) exit 0 ;;
-            esac
-          fi
-          rm -f "$pidfile"
-        fi
+          [Service]
+          Type=simple
+          User={{ ansible_facts.user_id }}
+          Group={{ ansible_facts.user_gid }}
+          Environment=HOME={{ ansible_facts.user_dir }}
+          Environment=XDG_CACHE_HOME={{ ansible_facts.user_dir }}/.cache
+          ExecStart={{ nexus_remote_bin_dir }}/nexusd --socket {{ nexus_socket }}
+          Restart=on-failure
+          RestartSec=2s
+          AmbientCapabilities=CAP_NET_ADMIN
+          CapabilityBoundingSet=CAP_NET_ADMIN
+          NoNewPrivileges=yes
+          PrivateTmp=yes
+          ProtectKernelTunables=yes
+          ProtectKernelModules=yes
+          ProtectControlGroups=yes
+          RestrictSUIDSGID=yes
+          LockPersonality=yes
 
-        nohup "$binary" --socket "$socket" >"$log" 2>&1 </dev/null &
-        echo $! > "$pidfile"
-      args:
-        executable: /bin/sh
+          [Install]
+          WantedBy=multi-user.target
+      register: nexus_service_unit_copy
+
+    - name: Enable and restart nexusd
+      become: true
+      ansible.builtin.systemd_service:
+        name: "{{ nexus_service_name }}"
+        daemon_reload: "{{ nexus_service_unit_copy.changed }}"
+        enabled: true
+        state: restarted
 
     - name: Wait for the daemon health RPC to respond
       ansible.builtin.command:
