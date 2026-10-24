@@ -41,8 +41,9 @@ Estado de las funcionalidades de NEXUS. La marca `[x]` indica implementación y 
 - [x] Confirmar en la R36S que F genera el evento Linux `BTN_TRIGGER_HAPPY5` (código 708); volumen genera los códigos 115 y 114.
 - [x] Detectar carga con `current_avg` positivo cuando el cargador está conectado, como respaldo para el estado `Not charging` incorrecto del driver RK817.
 - [x] Leer `voltage_avg` cuando el driver no expone `voltage_now`.
-- [ ] Validar después del despliegue que `nexusctl hardware status` reporte `Charging` y el voltaje real en la consola.
-- [ ] Registrar lecturas de batería/carga en varios estados reales, incluido cargador desconectado y carga completada.
+- [x] Validar después del despliegue que `nexusctl hardware status` reporte `Charging` y el voltaje real en la consola.
+- [x] Registrar estados reales con el cargador conectado y desconectado; verificar transiciones entre `Charging` y `Discharging`.
+- [ ] Registrar el estado de batería cuando la carga haya terminado.
 - [ ] Probar reinicio y apagado confirmados en hardware, con un procedimiento de recuperación.
 - [ ] Determinar por qué `voltage_now` de batería reporta `0` en la consola, o documentar que no está disponible.
 
@@ -69,5 +70,7 @@ Estado de las funcionalidades de NEXUS. La marca `[x]` indica implementación y 
 - El daemon y la CLI se compilaron para Linux ARM64.
 - Los controles físicos de volumen y brillo se probaron en la consola; la combinación de brillo usa el evento F medido en hardware.
 - Una muestra de 25 s con cargador conectado mostró `charger_online=1`, `current_avg` de aproximadamente 250 mA y `charge_now` en aumento (+1548 µAh); el kernel seguía reportando `Not charging`.
+- Prueba física por SSH (2026-10-24): al conectar el cable, `CHARGER CONNECTED` cambió a `true` y después `BATTERY STATUS`/`BATTERY CHARGING` a `Charging`/`true`, con voltaje de batería de aproximadamente 4.196 V. Al desconectarlo, `CHARGER CONNECTED` volvió a `false` y el estado pasó a `Discharging`; el voltaje bajó a aproximadamente 4.032 V. Las lecturas muestran que la detección de `Charging` puede tardar unos segundos después de conectar.
 - El escaneo Wi-Fi requiere `CAP_NET_ADMIN`, asignada a la unidad del daemon por Ansible.
-- No se han ejecutado pruebas de reinicio/apagado ni existe todavía una UI funcional.
+- Prueba de reinicio por software (2026-10-24): `nexusctl --confirm hardware reboot` fue aceptado por `systemd-logind` y SSH se desconectó; al minuto la R36S no respondía en la IP ni apareció otra IP con SSH en la LAN. Se recuperó con el botón físico de reset. El reinicio automático queda pendiente de diagnosticar en `r36s-os`; apagado no probado.
+- No existe todavía una UI funcional.
