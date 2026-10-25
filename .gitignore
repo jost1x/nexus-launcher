@@ -1,0 +1,12 @@
+# Local CMake builds and downloaded build dependencies
+/build/
+**/build/
+**/cmake-build-*/
+
+# CMake-generated files when building in a source directory
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+*.o
+*.a

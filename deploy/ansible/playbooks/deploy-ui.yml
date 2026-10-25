@@ -1,0 +1,130 @@
+---
+- name: Deploy and show the NEXUS UI on the R36S framebuffer
+  hosts: r36s_targets
+  gather_facts: true
+  become: false
+
+  vars:
+    nexus_ui_bundle_dir: /tmp/nexus-r36s-bundle
+    nexus_ui_remote_dir: /tmp/nexus-r36s-bundle
+    nexus_ui_socket: "{{ ansible_facts.user_dir }}/.cache/nexusd/nexusd.sock"
+    nexus_ui_runtime_unit: nexus-ui-r36s
+
+  tasks:
+    - name: Require the expected ARM64 target architecture
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.architecture in ["aarch64", "armv8l"]
+        fail_msg: "Target architecture is {{ ansible_facts.architecture }}; build the R36S framebuffer binary."
+
+    - name: Check that the framebuffer UI binary exists on the controller
+      ansible.builtin.stat:
+        path: "{{ nexus_ui_bundle_dir }}/nexus-ui"
+      delegate_to: localhost
+      become: false
+      register: nexus_ui_binary
+
+    - name: Check that the runtime library bundle exists on the controller
+      ansible.builtin.stat:
+        path: "{{ nexus_ui_bundle_dir }}/lib"
+      delegate_to: localhost
+      become: false
+      register: nexus_ui_libraries
+
+    - name: Require the complete UI bundle before deploying
+      ansible.builtin.assert:
+        that:
+          - nexus_ui_binary.stat.exists
+          - nexus_ui_binary.stat.isreg
+          - nexus_ui_libraries.stat.exists
+          - nexus_ui_libraries.stat.isdir
+        fail_msg: "Build/package the ARM64 framebuffer app and place nexus-ui plus lib/ in {{ nexus_ui_bundle_dir }}."
+
+    - name: Create the root-owned runtime directory
+      become: true
+      ansible.builtin.file:
+        path: "{{ nexus_ui_remote_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Upload the framebuffer UI executable
+      become: true
+      ansible.builtin.copy:
+        src: "{{ nexus_ui_bundle_dir }}/nexus-ui"
+        dest: "{{ nexus_ui_remote_dir }}/nexus-ui"
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Upload the UI runtime libraries
+      become: true
+      ansible.builtin.copy:
+        src: "{{ nexus_ui_bundle_dir }}/lib/"
+        dest: "{{ nexus_ui_remote_dir }}/lib/"
+        owner: root
+        group: root
+        directory_mode: "0755"
+
+    - name: Stop the currently running UI before switching virtual terminals
+      become: true
+      ansible.builtin.shell: |
+        set -eu
+        systemctl stop --no-block {{ (nexus_ui_runtime_unit ~ '.service') | quote }} >/dev/null 2>&1 || true
+        if pgrep -x nexus-ui >/dev/null; then
+          pkill -TERM -x nexus-ui
+          i=0
+          while pgrep -x nexus-ui >/dev/null && [ "$i" -lt 10 ]; do
+            sleep 1
+            i=$((i + 1))
+          done
+          if pgrep -x nexus-ui >/dev/null; then
+            echo "nexus-ui did not stop after SIGTERM" >&2
+            exit 1
+          fi
+          echo stopped
+        fi
+      args:
+        executable: /bin/sh
+      register: nexus_ui_stop
+      changed_when: "'stopped' in nexus_ui_stop.stdout"
+
+    - name: Return to the text console before launching the UI
+      become: true
+      ansible.builtin.command:
+        argv:
+          - chvt
+          - "1"
+      changed_when: false
+
+    - name: Launch the UI on virtual terminal 2
+      become: true
+      ansible.builtin.command:
+        argv:
+          - systemd-run
+          - "--unit={{ nexus_ui_runtime_unit }}"
+          - --collect
+          - --property=KillMode=control-group
+          - --property=Restart=no
+          - --
+          - openvt
+          - -f
+          - -c
+          - "2"
+          - -s
+          - --
+          - /usr/bin/env
+          - SDL_VIDEODRIVER=dummy
+          - "LD_LIBRARY_PATH={{ nexus_ui_remote_dir }}/lib"
+          - "NEXUSD_SOCKET={{ nexus_ui_socket }}"
+          - "{{ nexus_ui_remote_dir }}/nexus-ui"
+
+    - name: Confirm that the transient UI unit is running
+      become: true
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - "{{ nexus_ui_runtime_unit }}.service"
+      changed_when: false

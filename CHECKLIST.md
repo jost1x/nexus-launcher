@@ -49,10 +49,17 @@ Estado de las funcionalidades de NEXUS. La marca `[x]` indica implementación y 
 
 ## Interfaz y preferencias
 
-- [ ] Inicializar `nexus-ui` con C++17, LVGL 9 y SDL2 para desarrollo de escritorio.
-- [ ] Crear pantallas iniciales de Inicio, Configuración y Acerca de.
-- [ ] Añadir navegación completa con controles físicos, foco visible y recuperación ante desconexión del daemon.
-- [ ] Integrar llamadas RPC asíncronas de la UI con timeout, cancelación y errores visibles.
+- [x] Inicializar `nexus-ui` con C++17, LVGL 9.2.2 y SDL2; CMake obtiene LVGL en una revisión fijada.
+- [x] Crear vistas de Inicio, Wi-Fi, Pantalla, Audio, Sistema y Acerca de con navegación por ratón, teclado y mando SDL.
+- [x] Revisar las seis vistas renderizadas por SDL a 640×480; comprobar cambio de página con `Tab`/`Enter`, `Esc`, ratón y cierre de ventana mediante eventos SDL locales.
+- [x] Generar stubs C++ desde el Protobuf compartido e integrar gRPC C++ sobre UDS; comprobado con `SystemService.GetInfo`, `WifiService.GetStatus`, `WifiService.Scan` y `HardwareService.GetStatus`, contra `nexusd` local y el daemon de la R36S por túnel SSH UDS.
+- [x] Añadir navegación con teclado, foco visible, equivalentes de cruceta/A/B y soporte de ratón.
+- [x] Ejecutar RPC desde un worker con deadline, cancelación de escaneo al salir de Wi-Fi y entrega de resultados al hilo LVGL.
+- [x] Crear vistas Inicio, Wi-Fi (estado y escaneo), Pantalla (brillo), Audio (volumen), Sistema e Información.
+- [x] Añadir estados de daemon desconectado, carga, lista vacía, error y resultados cacheados.
+- [x] Ajustar brillo y volumen desde las acciones de la UI contra el daemon de la R36S: probar 99 %/79 % y restaurar los valores originales 100 %/80 %; el daemon confirmó la lectura final.
+- [x] Validar la detección SDL física de cruceta/A/B en la R36S y ajustar su puente. Una captura SDL 2.26.5 registró ↑=8, ↓=9, ←=10, →=11, B=1 y A=0 en `gpio-keys`, en coincidencia con el mapeo de la UI.
+- [x] Revisar visualmente las seis vistas a 640×480 con lecturas reales de Wi-Fi, batería, carga, temperatura, brillo, volumen y sistema obtenidas de la R36S.
 - [ ] Guardar preferencias de UI en JSON con validación y escritura atómica.
 
 ## Integración y estabilización de Armbian
@@ -73,4 +80,8 @@ Estado de las funcionalidades de NEXUS. La marca `[x]` indica implementación y 
 - Prueba física por SSH (2026-10-24): al conectar el cable, `CHARGER CONNECTED` cambió a `true` y después `BATTERY STATUS`/`BATTERY CHARGING` a `Charging`/`true`, con voltaje de batería de aproximadamente 4.196 V. Al desconectarlo, `CHARGER CONNECTED` volvió a `false` y el estado pasó a `Discharging`; el voltaje bajó a aproximadamente 4.032 V. Las lecturas muestran que la detección de `Charging` puede tardar unos segundos después de conectar.
 - El escaneo Wi-Fi requiere `CAP_NET_ADMIN`, asignada a la unidad del daemon por Ansible.
 - Prueba de reinicio por software (2026-10-24): `nexusctl --confirm hardware reboot` fue aceptado por `systemd-logind` y SSH se desconectó; al minuto la R36S no respondía en la IP ni apareció otra IP con SSH en la LAN. Se recuperó con el botón físico de reset. El reinicio automático queda pendiente de diagnosticar en `r36s-os`; apagado no probado.
-- No existe todavía una UI funcional.
+- La UI se compiló desde una configuración limpia y se renderizó en SDL a 640×480 sin daemon y conectada al daemon real de la R36S mediante un túnel SSH al socket UDS.
+- La respuesta de escaneo vacía se representó en su estado dedicado; la lista Wi-Fi se comprobó con error, resultados reales y caché.
+- Prueba en R36S (2026-10-25): la UI consultó y mostró estado Wi-Fi, redes detectadas, red actual, señal y seguridad; una segunda consulta confirmó resultados en caché. También mostró batería/carga, temperatura, sistema, brillo y volumen.
+- Prueba de ajustes en R36S (2026-10-25): la UI solicitó brillo 99 % y volumen 79 %, recibió confirmación y restauró brillo 100 % y volumen 80 %. La lectura final de `nexusctl hardware status` confirmó ambos valores.
+- Prueba SDL temporal en R36S (2026-10-25): sin instalar paquetes, se extrajo SDL 2.26.5 y sus dependencias en `/tmp`; SDL enumeró `adc-joystick` (0 botones) y `gpio-keys` (19 botones). Una captura registró en orden las pulsaciones ↑=8, ↓=9, ←=10, →=11, A=0 y B=1; el orden izquierdo/derecho de SDL difiere del mapa de `/dev/input/js0`. Se retiraron los archivos temporales. La prueba del movimiento visual dentro de `nexus-ui` se reserva para la integración Armbian de la fase 8.

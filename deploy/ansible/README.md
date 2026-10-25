@@ -35,6 +35,35 @@ ansible-playbook playbooks/stop.yml
 
 Los logs del daemon se consultan con `sudo journalctl -u nexusd`; su socket UDS y estado quedan en `~/.cache/nexusd`. `playbooks/stop.yml` detiene y deshabilita el servicio, sin borrar binarios ni la unidad.
 
+## Desplegar la interfaz en la R36S
+
+La UI se despliega aparte del daemon, directamente en el framebuffer y sin instalar un servicio persistente. Prepara un bundle ARM64 en el equipo de desarrollo con esta estructura:
+
+```text
+/tmp/nexus-r36s-bundle/
+├── nexus-ui
+└── lib/
+```
+
+El binario debe estar compilado con `NEXUS_UI_FBDEV=ON`; `lib/` contiene sus bibliotecas ARM64 de ejecución. El directorio por defecto coincide con el bundle usado en las pruebas; se puede indicar otra ruta con `-e nexus_ui_bundle_dir=/ruta/al/bundle`.
+
+Desde `deploy/ansible`:
+
+```sh
+ansible-playbook playbooks/deploy-ui.yml -K
+```
+
+El playbook comprueba que el destino sea ARM64, copia el ejecutable y las bibliotecas a `/tmp/nexus-r36s-bundle`, detiene la UI anterior con `SIGTERM`, devuelve la consola a la TTY 1 y abre la versión nueva en la TTY 2. También configura SDL como entrada de controles (`SDL_VIDEODRIVER=dummy`) y conecta la UI al socket de `nexusd`. La UI corre en una unidad systemd transitoria para que Ansible pueda iniciar y detener el proceso sin dejar un servicio habilitado después de reiniciar la consola. La aplicación cambia la TTY a modo gráfico mientras corre y restaura el modo texto al cerrarse. Se requiere `sudo` para acceder al framebuffer y cambiar la TTY.
+
+Para cerrar la UI desde la consola:
+
+```sh
+sudo systemctl stop nexus-ui-r36s.service
+sudo chvt 1
+```
+
+Los mensajes de la instancia iniciada por Ansible quedan disponibles con `sudo journalctl -u nexus-ui-r36s.service`.
+
 ## Validación en consola
 
 La consola ya tiene `iw` v5.19 en `/usr/sbin`; `nexusd` busca esta ruta aunque no forme parte del `PATH` del proceso. `CAP_NET_ADMIN` permite el escaneo al proceso `nexusd`. Es una capacidad amplia de administración de red, por lo que se concede únicamente a la unidad del daemon y no a `nexusctl` ni a la sesión SSH. El acceso a brillo y audio se otorga mediante grupos de dispositivo; el grupo dedicado de backlight solo puede escribir su atributo `brightness`. La política polkit concede únicamente reboot y poweroff al usuario SSH. Ansible comprueba esas cuatro autorizaciones con `pkcheck`, sin ejecutar las acciones, y confirma que no se autorizan comandos ajenos a ellas mediante `sudo`. La prueba funcional de reinicio/apagado debe hacerse aparte desde la CLI o el launcher con confirmación explícita y un procedimiento de recuperación.
