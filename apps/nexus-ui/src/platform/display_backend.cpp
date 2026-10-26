@@ -34,7 +34,11 @@ DisplayBackend::DisplayBackend() {
     lv_init();
 #ifdef NEXUS_UI_FBDEV
     auto* display = lv_linux_fbdev_create();
-    lv_linux_fbdev_set_file(display, "/dev/fb0");
+    if (display == nullptr) {
+        std::fprintf(stderr, "[nexus-ui] Failed to create the framebuffer display\n");
+    } else {
+        lv_linux_fbdev_set_file(display, "/dev/fb0");
+    }
 #else
     lv_sdl_window_create(640, 480);
     lv_sdl_mouse_create();

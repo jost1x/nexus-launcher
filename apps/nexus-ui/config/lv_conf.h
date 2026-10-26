@@ -3,7 +3,8 @@
 #define LV_CONF_H
 
 #define LV_COLOR_DEPTH 32
-#define LV_MEM_SIZE (256 * 1024U)
+#define LV_MEM_SIZE (1024 * 1024U)
+#define LV_DEF_REFR_PERIOD 16
 #define LV_USE_LOG 1
 #define LV_LOG_LEVEL LV_LOG_LEVEL_INFO
 #define LV_LOG_PRINTF 1

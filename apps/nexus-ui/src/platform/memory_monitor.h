@@ -13,6 +13,7 @@ public:
 private:
     std::chrono::steady_clock::time_point last_check_{};
     uint8_t reported_level_ = 0;
+    bool reported_initial_usage_ = false;
 };
 
 }  // namespace nexus

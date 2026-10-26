@@ -22,6 +22,13 @@ void MemoryMonitor::poll() {
 
     lv_mem_monitor_t monitor{};
     lv_mem_monitor(&monitor);
+    if (!reported_initial_usage_) {
+        std::fprintf(stderr,
+                     "[nexus-ui] LVGL heap: free=%zu/%zu bytes, largest block=%zu, peak used=%zu bytes\n",
+                     monitor.free_size, monitor.total_size, monitor.free_biggest_size, monitor.max_used);
+        std::fflush(stderr);
+        reported_initial_usage_ = true;
+    }
     const uint8_t level = monitor.free_size <= kCriticalMemoryBytes
                               ? 2
                               : monitor.free_size <= kLowMemoryBytes ? 1 : 0;
