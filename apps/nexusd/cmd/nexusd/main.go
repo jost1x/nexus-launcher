@@ -67,7 +67,16 @@ func run() error {
 	go wifiWatcher.MonitorWifiStatus(ctx, adapter, 2*time.Second)
 	go adapter.MonitorWifiProfiles(ctx, 5*time.Second)
 	go func() {
-		if err := adapter.WatchVolumeKeys(ctx, hardwareWatcher.Notify); err != nil {
+		onRestartLauncher := func() {
+			restartCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			if err := adapter.RestartLauncher(restartCtx); err != nil {
+				slog.Warn("physical button chord could not restart the launcher", "error", err)
+				return
+			}
+			slog.Info("physical button chord requested a launcher restart")
+		}
+		if err := adapter.WatchVolumeKeys(ctx, hardwareWatcher.Notify, onRestartLauncher); err != nil {
 			slog.Warn("physical volume controls are unavailable", "error", err)
 		}
 	}()

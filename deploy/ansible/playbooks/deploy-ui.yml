@@ -5,10 +5,11 @@
   become: false
 
   vars:
-    nexus_ui_bundle_dir: /tmp/nexus-r36s-bundle
-    nexus_ui_remote_dir: /tmp/nexus-r36s-bundle
+    nexus_ui_bundle_dir: "{{ playbook_dir }}/../../../build/docker/arm64/nexus-r36s-bundle"
+    nexus_ui_remote_dir: /opt/nexus-ui
     nexus_ui_socket: "{{ ansible_facts.user_dir }}/.cache/nexusd/nexusd.sock"
     nexus_ui_runtime_unit: nexus-ui-r36s
+    nexus_ui_service_unit: /etc/systemd/system/nexus-ui-r36s.service
 
   tasks:
     - name: Require the expected ARM64 target architecture
@@ -120,13 +121,51 @@
       failed_when: false
       changed_when: false
 
+    - name: Check whether the UI runtime unit is enabled at boot
+      become: true
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-enabled
+          - "{{ nexus_ui_runtime_unit }}.service"
+      register: nexus_ui_enabled_status
+      failed_when: false
+      changed_when: false
+
+    - name: Install the persistent UI service definition
+      become: true
+      ansible.builtin.copy:
+        dest: "{{ nexus_ui_service_unit }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=NEXUS launcher UI on the R36S framebuffer
+          Requires=nexusd.service
+          After=local-fs.target systemd-logind.service nexusd.service
+
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/openvt -f -w -c 2 -s -- /usr/bin/env SDL_VIDEODRIVER=dummy LD_LIBRARY_PATH={{ nexus_ui_remote_dir }}/lib NEXUSD_SOCKET={{ nexus_ui_socket }} /usr/bin/systemd-cat --identifier=nexus-ui -- {{ nexus_ui_remote_dir }}/nexus-ui
+          Restart=always
+          RestartSec=2s
+          KillMode=control-group
+          TimeoutStopSec=3s
+
+          [Install]
+          WantedBy=multi-user.target
+      register: nexus_ui_service_unit_copy
+
     - name: Decide whether the UI needs a restart
       ansible.builtin.set_fact:
         nexus_ui_restart_required: >-
           {{ (nexus_ui_force_restart | default(false) | bool)
              or (nexus_ui_binary_upload.changed | default(false))
              or (nexus_ui_libraries_upload.changed | default(false))
-             or (nexus_ui_runtime_status.stdout != "active") }}
+             or (nexus_ui_runtime_status.stdout != "active")
+             or (nexus_ui_enabled_status.stdout != "enabled")
+             or (nexus_ui_service_unit_copy.changed | default(false)) }}
 
     - name: Stop the currently running UI before switching virtual terminals
       become: true
@@ -164,34 +203,15 @@
       failed_when: false
       when: nexus_ui_restart_required
 
-    - name: Launch the UI on virtual terminal 2
+    - name: Enable and start the UI service at boot
       become: true
-      ansible.builtin.command:
-        argv:
-          - systemd-run
-          - "--unit={{ nexus_ui_runtime_unit }}"
-          - --collect
-          - --property=KillMode=control-group
-          - --property=Restart=no
-          - --
-          - openvt
-          - -f
-          - -w
-          - -c
-          - "2"
-          - -s
-          - --
-          - /usr/bin/env
-          - SDL_VIDEODRIVER=dummy
-          - "LD_LIBRARY_PATH={{ nexus_ui_remote_dir }}/lib"
-          - "NEXUSD_SOCKET={{ nexus_ui_socket }}"
-          - /usr/bin/systemd-cat
-          - --identifier=nexus-ui
-          - --
-          - "{{ nexus_ui_remote_dir }}/nexus-ui"
-      when: nexus_ui_restart_required
+      ansible.builtin.systemd_service:
+        name: "{{ nexus_ui_runtime_unit }}.service"
+        daemon_reload: "{{ nexus_ui_service_unit_copy.changed }}"
+        enabled: true
+        state: "{{ 'restarted' if nexus_ui_restart_required else 'started' }}"
 
-    - name: Confirm that the transient UI unit is running
+    - name: Confirm that the persistent UI unit is running
       become: true
       ansible.builtin.command:
         argv:

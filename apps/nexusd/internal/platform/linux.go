@@ -37,17 +37,20 @@ func NewLinux() *Linux {
 }
 
 const (
-	inputEventKey  = 1
-	keyVolumeDown  = 114
-	keyVolumeUp    = 115
-	keyFunction    = 708 // BTN_TRIGGER_HAPPY5 observed for the R36S F button
-	volumeKeyStep  = 5
-	inputEventSize = 24 // struct input_event on the supported 64-bit Linux targets.
+	inputEventKey       = 1
+	keyVolumeDown       = 114
+	keyVolumeUp         = 115
+	keyLeftTrigger      = 312 // BTN_TL2 on the R36S gpio-keys input device
+	keyRightTrigger     = 313 // BTN_TR2 on the R36S gpio-keys input device
+	keyFunction         = 708 // BTN_TRIGGER_HAPPY5 observed for the R36S F button
+	volumeKeyStep       = 5
+	inputEventSize      = 24 // struct input_event on the supported 64-bit Linux targets.
+	launcherRestartHold = 3 * time.Second
 )
 
 // WatchVolumeKeys applies the R36S gpio-keys volume buttons to the ALSA master.
 // It leaves the input device available to other consumers and ignores unrelated keys.
-func (p *Linux) WatchVolumeKeys(ctx context.Context, onChange func()) error {
+func (p *Linux) WatchVolumeKeys(ctx context.Context, onChange func(), onRestartLauncher func()) error {
 	device, err := p.volumeKeyDevice()
 	if err != nil {
 		return err
@@ -60,6 +63,28 @@ func (p *Linux) WatchVolumeKeys(ctx context.Context, onChange func()) error {
 	slog.Info("listening for volume keys", "device", device)
 	buffer := make([]byte, inputEventSize*16)
 	functionDown := false
+	leftTriggerDown := false
+	rightTriggerDown := false
+	var restartChordStarted time.Time
+	restartChordTriggered := false
+	checkRestartChord := func() {
+		if !functionDown || !leftTriggerDown || !rightTriggerDown {
+			restartChordStarted = time.Time{}
+			restartChordTriggered = false
+			return
+		}
+		if restartChordStarted.IsZero() {
+			restartChordStarted = time.Now()
+			return
+		}
+		if restartChordTriggered || time.Since(restartChordStarted) < launcherRestartHold {
+			return
+		}
+		restartChordTriggered = true
+		if onRestartLauncher != nil {
+			onRestartLauncher()
+		}
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil
@@ -67,6 +92,7 @@ func (p *Linux) WatchVolumeKeys(ctx context.Context, onChange func()) error {
 		n, readErr := f.Read(buffer)
 		if readErr != nil {
 			if errors.Is(readErr, syscall.EAGAIN) || errors.Is(readErr, syscall.EWOULDBLOCK) {
+				checkRestartChord()
 				select {
 				case <-ctx.Done():
 					return nil
@@ -81,14 +107,25 @@ func (p *Linux) WatchVolumeKeys(ctx context.Context, onChange func()) error {
 			typ := binary.LittleEndian.Uint16(event[16:18])
 			code := binary.LittleEndian.Uint16(event[18:20])
 			value := int32(binary.LittleEndian.Uint32(event[20:24]))
-			if typ != inputEventKey || (value != 1 && value != 2) {
-				if typ == inputEventKey && code == keyFunction && value == 0 {
-					functionDown = false
-				}
+			if typ != inputEventKey {
 				continue
 			}
-			if code == keyFunction {
-				functionDown = true
+			pressed := value == 1 || value == 2
+			switch code {
+			case keyFunction:
+				functionDown = pressed
+				checkRestartChord()
+				continue
+			case keyLeftTrigger:
+				leftTriggerDown = pressed
+				checkRestartChord()
+				continue
+			case keyRightTrigger:
+				rightTriggerDown = pressed
+				checkRestartChord()
+				continue
+			}
+			if !pressed {
 				continue
 			}
 			delta := 0
@@ -113,6 +150,23 @@ func (p *Linux) WatchVolumeKeys(ctx context.Context, onChange func()) error {
 			}
 		}
 	}
+}
+
+// RestartLauncher asks systemd to restart only the persistent NEXUS UI unit.
+// An Ansible-installed polkit rule grants nexusd permission for that action.
+func (p *Linux) RestartLauncher(ctx context.Context) error {
+	if p.LookPath == nil || p.Run == nil {
+		return errors.New("launcher restart is unavailable")
+	}
+	systemctl, err := p.LookPath("systemctl")
+	if err != nil {
+		return fmt.Errorf("locate systemctl: %w", err)
+	}
+	output, err := p.Run(ctx, systemctl, "--no-block", "restart", "nexus-ui-r36s.service")
+	if err != nil {
+		return fmt.Errorf("request launcher restart: %s: %w", strings.TrimSpace(string(output)), err)
+	}
+	return nil
 }
 
 func (p *Linux) volumeKeyDevice() (string, error) {

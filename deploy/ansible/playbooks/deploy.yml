@@ -16,6 +16,7 @@
     nexus_backlight_rule: /etc/udev/rules.d/90-nexus-backlight.rules
     nexus_rfkill_rule: /etc/udev/rules.d/80-nexus-rfkill.rules
     nexus_power_polkit_rule: /etc/polkit-1/rules.d/60-nexus-power.rules
+    nexus_ui_restart_polkit_rule: /etc/polkit-1/rules.d/61-nexus-ui-restart.rules
     nexus_backlight_group: nexusd-backlight
 
   tasks:
@@ -203,6 +204,23 @@
               "org.freedesktop.login1.power-off-multiple-sessions"
             ];
             if (subject.user === "{{ ansible_facts.user_id }}" && powerActions.indexOf(action.id) !== -1) {
+              return polkit.Result.YES;
+            }
+          });
+
+    - name: Allow nexusd to restart only the NEXUS launcher unit
+      become: true
+      ansible.builtin.copy:
+        dest: "{{ nexus_ui_restart_polkit_rule }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          polkit.addRule(function(action, subject) {
+            if (subject.user === "{{ ansible_facts.user_id }}" &&
+                action.id === "org.freedesktop.systemd1.manage-units" &&
+                action.lookup("unit") === "nexus-ui-r36s.service" &&
+                action.lookup("verb") === "restart") {
               return polkit.Result.YES;
             }
           });
