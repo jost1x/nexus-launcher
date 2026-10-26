@@ -14,6 +14,58 @@ using namespace components;
 using namespace ui_controls;
 using namespace view_helpers;
 
+lv_obj_t* create_hint_badge(lv_obj_t* parent, const char* key, int x) {
+    auto* badge = lv_obj_create(parent);
+    lv_obj_set_size(badge, 22, 22);
+    lv_obj_align(badge, LV_ALIGN_LEFT_MID, x, 0);
+    lv_obj_set_style_bg_color(badge, lv_color_hex(0x1A263A), 0);
+    lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(badge, lv_color_hex(0x34435C), 0);
+    lv_obj_set_style_border_width(badge, 1, 0);
+    lv_obj_set_style_radius(badge, 6, 0);
+    lv_obj_set_style_pad_all(badge, 0, 0);
+    lv_obj_clear_flag(badge, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
+    auto* label = create_label(badge, key, kText);
+    lv_obj_center(label);
+    return badge;
+}
+
+void create_controls_legend(lv_obj_t* root) {
+    auto* legend = lv_obj_create(root);
+    lv_obj_set_size(legend, 500, 24);
+    lv_obj_align(legend, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_set_style_bg_opa(legend, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(legend, 0, 0);
+    lv_obj_set_style_pad_all(legend, 0, 0);
+    lv_obj_clear_flag(legend, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(legend, LV_OBJ_FLAG_SCROLLABLE);
+
+    auto* dpad = lv_image_create(legend);
+    lv_image_set_src(dpad, &nexus_icon_gamepad_2);
+    lv_image_set_scale(dpad, 18 * 256 / 32);
+    lv_obj_set_style_image_recolor(dpad, kMuted, 0);
+    lv_obj_set_style_image_recolor_opa(dpad, LV_OPA_COVER, 0);
+    lv_obj_align(dpad, LV_ALIGN_LEFT_MID, 0, -1);
+    lv_obj_clear_flag(dpad, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(dpad, LV_OBJ_FLAG_SCROLLABLE);
+    auto* movement = create_label(legend, "Mover / ajustar", kMuted);
+    lv_obj_align(movement, LV_ALIGN_LEFT_MID, 25, 0);
+
+    create_hint_badge(legend, "L", 150);
+    create_hint_badge(legend, "R", 174);
+    auto* section = create_label(legend, "Sección", kMuted);
+    lv_obj_align(section, LV_ALIGN_LEFT_MID, 203, 0);
+
+    create_hint_badge(legend, "A", 304);
+    auto* accept = create_label(legend, "Aceptar", kMuted);
+    lv_obj_align(accept, LV_ALIGN_LEFT_MID, 331, 0);
+
+    create_hint_badge(legend, "B", 410);
+    auto* back = create_label(legend, "Volver", kMuted);
+    lv_obj_align(back, LV_ALIGN_LEFT_MID, 437, 0);
+}
+
 const char* view_title(View view) {
     switch (view) {
         case View::Home: return "Inicio";
@@ -22,6 +74,8 @@ const char* view_title(View view) {
         case View::Favorites: return "Favoritos";
         case View::Settings: return "Ajustes";
         case View::Wifi: return "Red Wi-Fi";
+        case View::WifiAvailable: return "Redes disponibles";
+        case View::WifiSaved: return "Redes guardadas";
         case View::Display: return "Pantalla";
         case View::Audio: return "Audio";
         case View::System: return "Sistema";
@@ -119,7 +173,8 @@ ViewObjects build_view_shell(View view, lv_group_t* group) {
     lv_obj_set_style_text_align(objects.battery_value, LV_TEXT_ALIGN_LEFT, 0);
 
     const bool home_view = view == View::Home;
-    const bool settings_view = view == View::Settings || view == View::Wifi || view == View::Display ||
+    const bool wifi_view = view == View::Wifi || view == View::WifiAvailable || view == View::WifiSaved;
+    const bool settings_view = view == View::Settings || wifi_view || view == View::Display ||
                                view == View::Audio || view == View::System || view == View::About;
     if (!home_view && !settings_view) {
         auto* navigation = create_card(root, 616, 54);
@@ -150,21 +205,23 @@ ViewObjects build_view_shell(View view, lv_group_t* group) {
         lv_obj_set_pos(sidebar_title, 8, 8);
 
         const struct SettingsItem { const char* title; const lv_image_dsc_t* icon; View view; Action action; } settings[] = {
+            {"Acerca de", &nexus_icon_info, View::About, Action::About},
             {"Wi-Fi", &nexus_icon_wifi, View::Wifi, Action::Wifi},
             {"Pantalla", &nexus_icon_sun, View::Display, Action::Display},
             {"Audio", &nexus_icon_volume_2, View::Audio, Action::Audio},
             {"Sistema", &nexus_icon_cpu, View::System, Action::System},
-            {"Acerca de", &nexus_icon_info, View::About, Action::About},
         };
         constexpr int settings_button_width = 136;
         for (size_t i = 0; i < std::size(settings); ++i) {
-            const bool selected = view == settings[i].view || (view == View::Settings && i == 0);
+            const bool selected = view == settings[i].view ||
+                                  (wifi_view && settings[i].view == View::Wifi) ||
+                                  (view == View::Settings && settings[i].view == View::About);
             auto* button = create_action_icon_label_button(sidebar, settings[i].icon, settings[i].title,
                                                            settings[i].action, group, settings_button_width,
                                                            44, selected);
             lv_obj_set_pos(button, 0, 36 + static_cast<int>(i) * 51);
-            if (selected || (view == View::Settings && i == 0)) objects.settings_menu_focus = button;
-            if (objects.initial_focus == nullptr && (selected || (view == View::Settings && i == 0))) {
+            if (selected) objects.settings_menu_focus = button;
+            if (objects.initial_focus == nullptr && selected) {
                 objects.initial_focus = button;
             }
         }
@@ -188,9 +245,7 @@ ViewObjects build_view_shell(View view, lv_group_t* group) {
         lv_obj_set_style_pad_all(panel, 16, 0);
     }
 
-    const char* hint_text = "Cruceta: mover/ajustar    ·    L/R: sección    ·    A: aceptar    ·    B: volver";
-    auto* controls_hint = create_label(root, hint_text, kMuted);
-    lv_obj_align(controls_hint, LV_ALIGN_BOTTOM_MID, 0, -7);
+    create_controls_legend(root);
 
     return objects;
 }

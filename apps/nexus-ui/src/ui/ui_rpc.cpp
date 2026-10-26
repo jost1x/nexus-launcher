@@ -81,6 +81,8 @@ bool same_hardware_view(View view,
                    (!current.thermal_available() ||
                     std::lround(previous.soc_temperature_celsius()) == std::lround(current.soc_temperature_celsius()));
         case View::Wifi:
+        case View::WifiAvailable:
+        case View::WifiSaved:
         case View::Games:
         case View::Apps:
         case View::Favorites:
@@ -139,6 +141,7 @@ void UiController::collect_results() {
                 case RpcOperation::WifiSetEnabled:
                     if (result.id != wifi_set_enabled_id_) continue;
                     wifi_set_enabled_id_ = 0;
+                    state_.wifi_radio_changing = false;
                     state_.wifi_action_message = "No se pudo cambiar el estado del Wi-Fi.";
                     break;
                 case RpcOperation::WifiConnect:
@@ -257,9 +260,12 @@ void UiController::collect_results() {
                 state_.wifi_action_message = state_.wifi_status->radio_enabled() ? "Wi-Fi activado." : "Wi-Fi desactivado.";
                 wifi_set_enabled_id_ = 0;
                 if (state_.wifi_status->radio_enabled() && wifi_scan_id_ == 0) {
+                    state_.wifi_scan.reset();
+                    state_.wifi_scan_error.clear();
                     state_.wifi_scan_loading = true;
                     wifi_scan_id_ = rpc_.scan_wifi(true);
                 }
+                state_.wifi_radio_changing = false;
                 break;
             case RpcOperation::WifiConnect:
                 if (result.id != wifi_connect_id_) continue;
@@ -276,6 +282,8 @@ void UiController::collect_results() {
                 state_.wifi_saved_loading = true;
                 wifi_saved_id_ = rpc_.list_saved_wifi_networks();
                 if (wifi_scan_id_ == 0) {
+                    state_.wifi_scan.reset();
+                    state_.wifi_scan_error.clear();
                     state_.wifi_scan_loading = true;
                     wifi_scan_id_ = rpc_.scan_wifi(true);
                 }
@@ -295,6 +303,8 @@ void UiController::collect_results() {
                 state_.wifi_saved_loading = true;
                 wifi_saved_id_ = rpc_.list_saved_wifi_networks();
                 if (wifi_scan_id_ == 0) {
+                    state_.wifi_scan.reset();
+                    state_.wifi_scan_error.clear();
                     state_.wifi_scan_loading = true;
                     wifi_scan_id_ = rpc_.scan_wifi(true);
                 }

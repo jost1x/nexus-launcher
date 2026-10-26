@@ -26,23 +26,28 @@ void UiController::navigate_to(View view, bool remember_current) {
         }
         previous_view_ = NavigationEntry{view_, focused_index};
     }
-    if (view_ == View::Wifi && view != View::Wifi && wifi_scan_id_ != 0) {
+    if (view_ == View::WifiAvailable && view != View::WifiAvailable && wifi_scan_id_ != 0) {
         rpc_.cancel(wifi_scan_id_);
         wifi_scan_id_ = 0;
         state_.wifi_scan_loading = false;
     }
     view_ = view;
-    if (view == View::Settings || view == View::Wifi) {
+    if (view == View::Wifi || view == View::WifiAvailable || view == View::WifiSaved) {
         if (wifi_watch_id_ == 0 && wifi_status_id_ == 0 && (!state_.wifi_status || !state_.wifi_status_error.empty())) {
             wifi_status_id_ = rpc_.request_wifi_status();
             state_.wifi_status_loading = wifi_status_id_ != 0;
             state_.wifi_status_error.clear();
         }
+    }
+    if (view == View::WifiAvailable) {
         if (wifi_scan_id_ == 0) {
             state_.wifi_scan_error.clear();
+            state_.wifi_scan.reset();
             state_.wifi_scan_loading = true;
             wifi_scan_id_ = rpc_.scan_wifi(true);
         }
+    }
+    if (view == View::WifiSaved) {
         if (wifi_saved_id_ == 0 && !state_.saved_wifi_networks) {
             state_.wifi_saved_error.clear();
             state_.wifi_saved_loading = true;
@@ -72,13 +77,14 @@ void UiController::navigate_back() {
 }
 
 void UiController::cycle_section(int direction) {
-    constexpr std::array settings_sections = {
-        View::Wifi, View::Display, View::Audio, View::System, View::About,
-    };
+    constexpr std::array settings_sections = {View::About, View::Wifi, View::Display, View::Audio, View::System};
     const bool in_settings = view_ == View::Settings || view_ == View::Wifi || view_ == View::Display ||
-                             view_ == View::Audio || view_ == View::System || view_ == View::About;
+                             view_ == View::WifiAvailable || view_ == View::WifiSaved || view_ == View::Audio ||
+                             view_ == View::System || view_ == View::About;
     if (in_settings) {
-        const View current = view_ == View::Settings ? View::Wifi : view_;
+        const View current = view_ == View::Settings ? View::About
+                             : view_ == View::WifiAvailable || view_ == View::WifiSaved ? View::Wifi
+                                                                                         : view_;
         const auto iterator = std::find(settings_sections.begin(), settings_sections.end(), current);
         const int current_index = iterator == settings_sections.end()
                                       ? 0
@@ -89,7 +95,7 @@ void UiController::cycle_section(int direction) {
         return;
     }
 
-    constexpr std::array main_sections = {View::Home, View::Games, View::Apps, View::Favorites, View::Settings};
+    constexpr std::array main_sections = {View::Home, View::Games, View::Apps, View::Favorites, View::About};
     const auto iterator = std::find(main_sections.begin(), main_sections.end(), view_);
     const int current_index = iterator == main_sections.end() ? 0 : static_cast<int>(iterator - main_sections.begin());
     const int next_index = (current_index + direction + static_cast<int>(main_sections.size())) %
@@ -104,8 +110,10 @@ void UiController::dispatch(Action action) {
         case Action::Games: navigate(View::Games); return;
         case Action::Apps: navigate(View::Apps); return;
         case Action::Favorites: navigate(View::Favorites); return;
-        case Action::Settings: navigate(View::Settings); return;
+        case Action::Settings: navigate(View::About); return;
         case Action::Wifi: navigate(View::Wifi); return;
+        case Action::ShowWifiAvailable: navigate(View::WifiAvailable); return;
+        case Action::ShowWifiSaved: navigate(View::WifiSaved); return;
         case Action::Display: navigate(View::Display); return;
         case Action::Audio: navigate(View::Audio); return;
         case Action::System: navigate(View::System); return;
@@ -118,6 +126,7 @@ void UiController::dispatch(Action action) {
                 state_.wifi_status_error.clear();
             }
             state_.wifi_scan_error.clear();
+            state_.wifi_scan.reset();
             state_.wifi_scan_loading = true;
             wifi_scan_id_ = rpc_.scan_wifi(true);
             render();
@@ -137,6 +146,7 @@ void UiController::dispatch(Action action) {
                 state_.wifi_scan_loading = false;
             }
             state_.wifi_action_message = state_.wifi_status->radio_enabled() ? "Desactivando Wi-Fi..." : "Activando Wi-Fi...";
+            state_.wifi_radio_changing = true;
             wifi_set_enabled_id_ = rpc_.set_wifi_enabled(!state_.wifi_status->radio_enabled());
             render();
             return;
@@ -162,6 +172,8 @@ void UiController::dispatch(Action action) {
             state_.wifi_password.clear();
             state_.wifi_connect_ssid.clear();
             state_.wifi_connect_security.clear();
+            wifi_keyboard_selected_button_ = LV_BUTTONMATRIX_BUTTON_NONE;
+            wifi_keyboard_mode_ = LV_KEYBOARD_MODE_TEXT_LOWER;
             render();
             return;
         case Action::CancelWifiPassword:
@@ -169,6 +181,8 @@ void UiController::dispatch(Action action) {
             state_.wifi_connect_security.clear();
             std::fill(state_.wifi_password.begin(), state_.wifi_password.end(), '\0');
             state_.wifi_password.clear();
+            wifi_keyboard_selected_button_ = LV_BUTTONMATRIX_BUTTON_NONE;
+            wifi_keyboard_mode_ = LV_KEYBOARD_MODE_TEXT_LOWER;
             state_.wifi_action_message.clear();
             render();
             return;
@@ -205,6 +219,8 @@ void UiController::dispatch_wifi_action(const WifiActionContext& context) {
             state_.wifi_connect_ssid = context.ssid;
             state_.wifi_connect_security = context.security.empty() ? "open" : context.security;
             state_.wifi_password.clear();
+            wifi_keyboard_selected_button_ = LV_BUTTONMATRIX_BUTTON_NONE;
+            wifi_keyboard_mode_ = LV_KEYBOARD_MODE_TEXT_LOWER;
             if (state_.wifi_connect_security == "open") {
                 state_.wifi_action_message.clear();
                 dispatch(Action::SubmitWifiPassword);

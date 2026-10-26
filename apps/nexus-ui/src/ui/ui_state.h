@@ -7,7 +7,20 @@
 
 namespace nexus {
 
-enum class View { Home, Games, Apps, Favorites, Settings, Wifi, Display, Audio, System, About };
+enum class View {
+    Home,
+    Games,
+    Apps,
+    Favorites,
+    Settings,
+    Wifi,
+    WifiAvailable,
+    WifiSaved,
+    Display,
+    Audio,
+    System,
+    About,
+};
 enum class Action {
     Home = 1,
     Wifi,
@@ -30,6 +43,8 @@ enum class Action {
     SubmitWifiPassword,
     CancelWifiPassword,
     RefreshSavedWifiNetworks,
+    ShowWifiAvailable,
+    ShowWifiSaved,
 };
 
 struct WifiActionContext {
@@ -48,6 +63,7 @@ struct UiState {
     bool wifi_status_loading = false;
     bool wifi_scan_loading = false;
     bool wifi_saved_loading = false;
+    bool wifi_radio_changing = false;
     bool hardware_loading = false;
     bool system_loading = false;
     std::string wifi_status_error;

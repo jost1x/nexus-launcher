@@ -15,10 +15,12 @@ ViewObjects build_view(View view, const UiState& state, lv_group_t* group) {
             build_library_content(view, objects.panel, state, group, objects);
             break;
         case View::Settings:
-            build_wifi_content(objects.panel, state, group, objects);
+            build_about_content(objects.panel, state, group, objects);
             break;
         case View::Wifi:
-            build_wifi_content(objects.panel, state, group, objects);
+        case View::WifiAvailable:
+        case View::WifiSaved:
+            build_wifi_content(view, objects.panel, state, group, objects);
             break;
         case View::Display:
         case View::Audio:

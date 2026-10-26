@@ -33,13 +33,14 @@ void ControllerInput::open_devices() {
     }
 
     for (int index = 0; index < SDL_NumJoysticks(); ++index) {
+        const char* name = SDL_JoystickNameForIndex(index);
+        const bool is_r36s_keys = name != nullptr && std::strcmp(name, "gpio-keys") == 0;
+        if (is_r36s_keys) {
+            if (r36s_keys_ == nullptr) r36s_keys_ = SDL_JoystickOpen(index);
+            continue;
+        }
         if (controller_ == nullptr && SDL_IsGameController(index)) {
             controller_ = SDL_GameControllerOpen(index);
-        }
-
-        const char* name = SDL_JoystickNameForIndex(index);
-        if (r36s_keys_ == nullptr && name != nullptr && std::strcmp(name, "gpio-keys") == 0) {
-            r36s_keys_ = SDL_JoystickOpen(index);
         }
     }
 }
@@ -80,7 +81,9 @@ void ControllerInput::read(lv_indev_t* indev, lv_indev_data_t* data) {
         // /dev/input/js0 button map (whose left/right indices are reversed).
         constexpr RawMapping r36s_mappings[] = {
             {8, LV_KEY_UP}, {9, LV_KEY_DOWN}, {10, LV_KEY_LEFT}, {11, LV_KEY_RIGHT},
-            {0, LV_KEY_ENTER}, {1, LV_KEY_ESC},
+            // On the R36S gpio-keys device, the reported A/B indices are
+            // opposite the expected confirm/back actions.
+            {0, LV_KEY_ESC}, {1, LV_KEY_ENTER},
             {4, LV_KEY_HOME}, {5, LV_KEY_END},
         };
         for (const auto& mapping : r36s_mappings) {

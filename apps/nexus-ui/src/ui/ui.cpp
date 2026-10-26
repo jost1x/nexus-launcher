@@ -37,6 +37,11 @@ void UiController::start() {
 }
 
 void UiController::render() {
+    auto* focused = lv_group_get_focused(focus_group_);
+    if (!state_.wifi_connect_ssid.empty() && focused != nullptr && lv_obj_check_type(focused, &lv_keyboard_class)) {
+        wifi_keyboard_selected_button_ = lv_keyboard_get_selected_button(focused);
+    }
+
     lv_group_remove_all_objs(focus_group_);
     if (root_ != nullptr) {
         lv_obj_delete(root_);
@@ -51,7 +56,17 @@ void UiController::render() {
     battery_value_ = objects.battery_value;
     last_header_text_.clear();
     lv_obj_add_event_cb(root_, root_deleted, LV_EVENT_DELETE, this);
-    if (objects.initial_focus != nullptr) lv_group_focus_obj(objects.initial_focus);
+    if (objects.initial_focus != nullptr) {
+        if (!state_.wifi_connect_ssid.empty() &&
+            lv_obj_check_type(objects.initial_focus, &lv_keyboard_class)) {
+            lv_keyboard_set_mode(objects.initial_focus, wifi_keyboard_mode_);
+            lv_buttonmatrix_clear_button_ctrl_all(objects.initial_focus, LV_BUTTONMATRIX_CTRL_CLICK_TRIG);
+            if (wifi_keyboard_selected_button_ != LV_BUTTONMATRIX_BUTTON_NONE) {
+                lv_buttonmatrix_set_selected_button(objects.initial_focus, wifi_keyboard_selected_button_);
+            }
+        }
+        lv_group_focus_obj(objects.initial_focus);
+    }
     if (restore_focus_index_) {
         auto* restore_focus = lv_group_get_obj_by_index(focus_group_, *restore_focus_index_);
         if (restore_focus != nullptr && lv_obj_is_visible(restore_focus)) {

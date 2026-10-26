@@ -26,7 +26,7 @@ cmake --build build/nexus-ui --parallel
 
 La compilación inicial necesita acceso a GitHub para descargar LVGL. SDL2 se resuelve desde la instalación del sistema.
 
-Con teclado o mando, las flechas/cruceta mueven el foco según la posición de los controles; arriba/abajo conectan la navegación superior con el contenido. `Enter`/A acepta y `Esc`/B vuelve a la vista anterior; en Inicio, B no cambia de pantalla. Izquierda/derecha ajustan los deslizadores cuando están enfocados. `Tab`/`Page Down` avanza el foco y `Page Up` retrocede; el ratón también activa los controles. En la R36S, SDL 2.26.5 enumera `gpio-keys` con 19 botones. Una captura física confirmó A/B `0/1`, arriba/abajo `8/9` e izquierda/derecha `10/11`; este último orden difiere del mapa `/dev/input/js0`. La validación visual y de navegación física en el dispositivo queda pendiente.
+Con teclado o mando, las flechas/cruceta mueven el foco según la posición de los controles; arriba/abajo conectan la navegación superior con el contenido. `Enter`/A acepta y `Esc`/B vuelve a la vista anterior; en Inicio, B no cambia de pantalla. Izquierda/derecha ajustan los deslizadores cuando están enfocados. `Tab`/`Page Down` avanza el foco y `Page Up` retrocede; el ratón también activa los controles. En la R36S, SDL 2.26.5 enumera `gpio-keys` con 19 botones. La captura física confirmó los índices A/B `0/1`, arriba/abajo `8/9` e izquierda/derecha `10/11`; el orden de A/B se invierte al mapearlo a aceptar/volver. El orden izquierda/derecha también difiere del mapa `/dev/input/js0`.
 
 El cliente gRPC usa `NEXUSD_SOCKET` si está definido; de lo contrario, busca el socket en `$XDG_CACHE_HOME/nexusd/nexusd.sock` o `~/.cache/nexusd/nexusd.sock`, igual que `nexusd`.
 

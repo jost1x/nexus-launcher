@@ -24,10 +24,14 @@ public:
     lv_group_t* focus_group() const { return focus_group_; }
     static void action_event(lv_event_t* event);
     static void key_event(lv_event_t* event);
+    static void wifi_keyboard_edge_event(lv_event_t* event);
     static void slider_event(lv_event_t* event);
     static void wifi_action_event(lv_event_t* event);
     static void wifi_action_delete_event(lv_event_t* event);
     static void wifi_password_ready_event(lv_event_t* event);
+    static void wifi_password_changed_event(lv_event_t* event);
+    static void wifi_password_clicked_event(lv_event_t* event);
+    static void wifi_password_cancel_event(lv_event_t* event);
 
 private:
     struct NavigationEntry {
@@ -79,6 +83,8 @@ private:
     uint64_t system_id_ = 0;
     uint64_t brightness_id_ = 0;
     uint64_t volume_id_ = 0;
+    uint32_t wifi_keyboard_selected_button_ = LV_BUTTONMATRIX_BUTTON_NONE;
+    lv_keyboard_mode_t wifi_keyboard_mode_ = LV_KEYBOARD_MODE_TEXT_LOWER;
     bool stopped_ = false;
     static UiController* active_;
 };

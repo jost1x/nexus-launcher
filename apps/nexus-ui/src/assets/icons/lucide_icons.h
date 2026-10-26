@@ -15,3 +15,5 @@ extern const lv_image_dsc_t nexus_icon_gamepad_2;
 extern const lv_image_dsc_t nexus_icon_grid_2x2;
 extern const lv_image_dsc_t nexus_icon_star;
 extern const lv_image_dsc_t nexus_icon_settings;
+extern const lv_image_dsc_t nexus_icon_eye;
+extern const lv_image_dsc_t nexus_icon_eye_off;

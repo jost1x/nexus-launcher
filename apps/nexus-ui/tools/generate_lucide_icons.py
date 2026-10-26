@@ -25,6 +25,8 @@ ICONS = {
     "grid-2x2": 32,
     "star": 32,
     "settings": 32,
+    "eye": 24,
+    "eye-off": 24,
 }
 
 
