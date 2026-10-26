@@ -1,5 +1,7 @@
 #include "rpc/rpc_client.h"
 
+#include <algorithm>
+
 namespace nexus {
 
 RpcResult RpcClient::invoke(const Task& task) {
@@ -23,6 +25,57 @@ RpcResult RpcClient::invoke(const Task& task) {
             request.set_refresh(task.refresh);
             nexus::v1::ScanResponse response;
             result.status = wifi_stub_->Scan(task.context.get(), request, &response);
+            result.payload = std::move(response);
+            break;
+        }
+        case RpcOperation::WifiSavedNetworks: {
+            nexus::v1::WifiServiceListSavedNetworksRequest request;
+            nexus::v1::WifiServiceListSavedNetworksResponse response;
+            result.status = wifi_stub_->ListSavedNetworks(task.context.get(), request, &response);
+            result.payload = std::move(response);
+            break;
+        }
+        case RpcOperation::WifiSetEnabled: {
+            nexus::v1::WifiServiceSetEnabledRequest request;
+            request.set_enabled(task.enabled);
+            nexus::v1::WifiServiceSetEnabledResponse response;
+            result.status = wifi_stub_->SetEnabled(task.context.get(), request, &response);
+            result.payload = std::move(response);
+            break;
+        }
+        case RpcOperation::WifiConnect: {
+            nexus::v1::WifiServiceConnectRequest request;
+            request.set_ssid(task.text);
+            request.set_password(task.secret);
+            request.set_security(task.security);
+            nexus::v1::WifiServiceConnectResponse response;
+            result.status = wifi_stub_->Connect(task.context.get(), request, &response);
+            std::fill(request.mutable_password()->begin(), request.mutable_password()->end(), '\0');
+            request.clear_password();
+            result.payload = std::move(response);
+            break;
+        }
+        case RpcOperation::WifiConnectSaved: {
+            nexus::v1::WifiServiceConnectSavedNetworkRequest request;
+            request.set_id(task.text);
+            nexus::v1::WifiServiceConnectSavedNetworkResponse response;
+            result.status = wifi_stub_->ConnectSavedNetwork(task.context.get(), request, &response);
+            result.payload = std::move(response);
+            break;
+        }
+        case RpcOperation::WifiSetPreferred: {
+            nexus::v1::WifiServiceSetPreferredNetworkRequest request;
+            request.set_id(task.text);
+            nexus::v1::WifiServiceSetPreferredNetworkResponse response;
+            result.status = wifi_stub_->SetPreferredNetwork(task.context.get(), request, &response);
+            result.payload = std::move(response);
+            break;
+        }
+        case RpcOperation::WifiForget: {
+            nexus::v1::WifiServiceForgetNetworkRequest request;
+            request.set_id(task.text);
+            nexus::v1::WifiServiceForgetNetworkResponse response;
+            result.status = wifi_stub_->ForgetNetwork(task.context.get(), request, &response);
             result.payload = std::move(response);
             break;
         }

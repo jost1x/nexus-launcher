@@ -39,6 +39,21 @@ const (
 	WifiServiceWatchStatusProcedure = "/nexus.v1.WifiService/WatchStatus"
 	// WifiServiceScanProcedure is the procedure name of the WifiService's Scan RPC.
 	WifiServiceScanProcedure = "/nexus.v1.WifiService/Scan"
+	// WifiServiceSetEnabledProcedure is the procedure name of the WifiService's SetEnabled RPC.
+	WifiServiceSetEnabledProcedure = "/nexus.v1.WifiService/SetEnabled"
+	// WifiServiceConnectProcedure is the procedure name of the WifiService's Connect RPC.
+	WifiServiceConnectProcedure = "/nexus.v1.WifiService/Connect"
+	// WifiServiceConnectSavedNetworkProcedure is the procedure name of the WifiService's
+	// ConnectSavedNetwork RPC.
+	WifiServiceConnectSavedNetworkProcedure = "/nexus.v1.WifiService/ConnectSavedNetwork"
+	// WifiServiceListSavedNetworksProcedure is the procedure name of the WifiService's
+	// ListSavedNetworks RPC.
+	WifiServiceListSavedNetworksProcedure = "/nexus.v1.WifiService/ListSavedNetworks"
+	// WifiServiceSetPreferredNetworkProcedure is the procedure name of the WifiService's
+	// SetPreferredNetwork RPC.
+	WifiServiceSetPreferredNetworkProcedure = "/nexus.v1.WifiService/SetPreferredNetwork"
+	// WifiServiceForgetNetworkProcedure is the procedure name of the WifiService's ForgetNetwork RPC.
+	WifiServiceForgetNetworkProcedure = "/nexus.v1.WifiService/ForgetNetwork"
 	// HardwareServiceGetStatusProcedure is the procedure name of the HardwareService's GetStatus RPC.
 	HardwareServiceGetStatusProcedure = "/nexus.v1.HardwareService/GetStatus"
 	// HardwareServiceWatchStatusProcedure is the procedure name of the HardwareService's WatchStatus
@@ -178,14 +193,62 @@ var (
 			Procedure:  WifiServiceScanProcedure,
 		}
 	})
+	wifiServiceSetEnabledSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_nexus_v1_nexus_proto.Services().ByName("WifiService").Methods().ByName("SetEnabled"),
+			Procedure:  WifiServiceSetEnabledProcedure,
+		}
+	})
+	wifiServiceConnectSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_nexus_v1_nexus_proto.Services().ByName("WifiService").Methods().ByName("Connect"),
+			Procedure:  WifiServiceConnectProcedure,
+		}
+	})
+	wifiServiceConnectSavedNetworkSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_nexus_v1_nexus_proto.Services().ByName("WifiService").Methods().ByName("ConnectSavedNetwork"),
+			Procedure:  WifiServiceConnectSavedNetworkProcedure,
+		}
+	})
+	wifiServiceListSavedNetworksSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_nexus_v1_nexus_proto.Services().ByName("WifiService").Methods().ByName("ListSavedNetworks"),
+			Procedure:  WifiServiceListSavedNetworksProcedure,
+		}
+	})
+	wifiServiceSetPreferredNetworkSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_nexus_v1_nexus_proto.Services().ByName("WifiService").Methods().ByName("SetPreferredNetwork"),
+			Procedure:  WifiServiceSetPreferredNetworkProcedure,
+		}
+	})
+	wifiServiceForgetNetworkSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     v1.File_nexus_v1_nexus_proto.Services().ByName("WifiService").Methods().ByName("ForgetNetwork"),
+			Procedure:  WifiServiceForgetNetworkProcedure,
+		}
+	})
 )
 
 // WifiServiceClient is a client for the nexus.v1.WifiService service.
 type WifiServiceClient interface {
 	GetStatus(context.Context, *v1.WifiServiceGetStatusRequest) (*v1.WifiServiceGetStatusResponse, error)
 	// Sends an initial snapshot and subsequent updates when Wi-Fi state changes.
-	WatchStatus(context.Context, *v1.WifiServiceGetStatusRequest) (WifiServiceWatchStatusClientStream, error)
+	WatchStatus(context.Context, *v1.WifiServiceWatchStatusRequest) (WifiServiceWatchStatusClientStream, error)
 	Scan(context.Context, *v1.ScanRequest) (*v1.ScanResponse, error)
+	SetEnabled(context.Context, *v1.WifiServiceSetEnabledRequest) (*v1.WifiServiceSetEnabledResponse, error)
+	Connect(context.Context, *v1.WifiServiceConnectRequest) (*v1.WifiServiceConnectResponse, error)
+	ConnectSavedNetwork(context.Context, *v1.WifiServiceConnectSavedNetworkRequest) (*v1.WifiServiceConnectSavedNetworkResponse, error)
+	ListSavedNetworks(context.Context, *v1.WifiServiceListSavedNetworksRequest) (*v1.WifiServiceListSavedNetworksResponse, error)
+	SetPreferredNetwork(context.Context, *v1.WifiServiceSetPreferredNetworkRequest) (*v1.WifiServiceSetPreferredNetworkResponse, error)
+	ForgetNetwork(context.Context, *v1.WifiServiceForgetNetworkRequest) (*v1.WifiServiceForgetNetworkResponse, error)
 }
 
 // NewWifiServiceClient constructs a client for the nexus.v1.WifiService service. Multiple service
@@ -200,8 +263,8 @@ type WifiServiceWatchStatusClientStream struct {
 }
 
 // Receive returns the next response message from the server.
-func (s WifiServiceWatchStatusClientStream) Receive() (*v1.WifiServiceGetStatusResponse, error) {
-	var res v1.WifiServiceGetStatusResponse
+func (s WifiServiceWatchStatusClientStream) Receive() (*v1.WifiServiceWatchStatusResponse, error) {
+	var res v1.WifiServiceWatchStatusResponse
 	if err := s.stream.Receive(&res); err != nil {
 		return nil, err
 	}
@@ -218,8 +281,14 @@ func (s WifiServiceWatchStatusClientStream) Close() error {
 type WifiServiceHandler interface {
 	GetStatus(context.Context, *v1.WifiServiceGetStatusRequest) (*v1.WifiServiceGetStatusResponse, error)
 	// Sends an initial snapshot and subsequent updates when Wi-Fi state changes.
-	WatchStatus(context.Context, *v1.WifiServiceGetStatusRequest, WifiServiceWatchStatusServerStream) error
+	WatchStatus(context.Context, *v1.WifiServiceWatchStatusRequest, WifiServiceWatchStatusServerStream) error
 	Scan(context.Context, *v1.ScanRequest) (*v1.ScanResponse, error)
+	SetEnabled(context.Context, *v1.WifiServiceSetEnabledRequest) (*v1.WifiServiceSetEnabledResponse, error)
+	Connect(context.Context, *v1.WifiServiceConnectRequest) (*v1.WifiServiceConnectResponse, error)
+	ConnectSavedNetwork(context.Context, *v1.WifiServiceConnectSavedNetworkRequest) (*v1.WifiServiceConnectSavedNetworkResponse, error)
+	ListSavedNetworks(context.Context, *v1.WifiServiceListSavedNetworksRequest) (*v1.WifiServiceListSavedNetworksResponse, error)
+	SetPreferredNetwork(context.Context, *v1.WifiServiceSetPreferredNetworkRequest) (*v1.WifiServiceSetPreferredNetworkResponse, error)
+	ForgetNetwork(context.Context, *v1.WifiServiceForgetNetworkRequest) (*v1.WifiServiceForgetNetworkResponse, error)
 }
 
 // RegisterWifiServiceHandler registers svc as the nexus.v1.WifiService implementation on server.
@@ -229,6 +298,12 @@ func RegisterWifiServiceHandler(server *connect.Server, svc WifiServiceHandler) 
 		connect.Method{Spec: wifiServiceGetStatusSpec(), Handler: adapter.getStatus},
 		connect.Method{Spec: wifiServiceWatchStatusSpec(), Handler: adapter.watchStatus},
 		connect.Method{Spec: wifiServiceScanSpec(), Handler: adapter.scan},
+		connect.Method{Spec: wifiServiceSetEnabledSpec(), Handler: adapter.setEnabled},
+		connect.Method{Spec: wifiServiceConnectSpec(), Handler: adapter.connect},
+		connect.Method{Spec: wifiServiceConnectSavedNetworkSpec(), Handler: adapter.connectSavedNetwork},
+		connect.Method{Spec: wifiServiceListSavedNetworksSpec(), Handler: adapter.listSavedNetworks},
+		connect.Method{Spec: wifiServiceSetPreferredNetworkSpec(), Handler: adapter.setPreferredNetwork},
+		connect.Method{Spec: wifiServiceForgetNetworkSpec(), Handler: adapter.forgetNetwork},
 	)
 }
 
@@ -243,7 +318,7 @@ func (s WifiServiceWatchStatusServerStream) SendHeaders() error {
 }
 
 // Send sends a response message to the client.
-func (s WifiServiceWatchStatusServerStream) Send(res *v1.WifiServiceGetStatusResponse) error {
+func (s WifiServiceWatchStatusServerStream) Send(res *v1.WifiServiceWatchStatusResponse) error {
 	return s.stream.Send(res)
 }
 
@@ -254,12 +329,36 @@ func (UnimplementedWifiServiceHandler) GetStatus(context.Context, *v1.WifiServic
 	return nil, connect.NewError(connect.CodeUnimplemented, "nexus.v1.WifiService.GetStatus is not implemented")
 }
 
-func (UnimplementedWifiServiceHandler) WatchStatus(context.Context, *v1.WifiServiceGetStatusRequest, WifiServiceWatchStatusServerStream) error {
+func (UnimplementedWifiServiceHandler) WatchStatus(context.Context, *v1.WifiServiceWatchStatusRequest, WifiServiceWatchStatusServerStream) error {
 	return connect.NewError(connect.CodeUnimplemented, "nexus.v1.WifiService.WatchStatus is not implemented")
 }
 
 func (UnimplementedWifiServiceHandler) Scan(context.Context, *v1.ScanRequest) (*v1.ScanResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "nexus.v1.WifiService.Scan is not implemented")
+}
+
+func (UnimplementedWifiServiceHandler) SetEnabled(context.Context, *v1.WifiServiceSetEnabledRequest) (*v1.WifiServiceSetEnabledResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "nexus.v1.WifiService.SetEnabled is not implemented")
+}
+
+func (UnimplementedWifiServiceHandler) Connect(context.Context, *v1.WifiServiceConnectRequest) (*v1.WifiServiceConnectResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "nexus.v1.WifiService.Connect is not implemented")
+}
+
+func (UnimplementedWifiServiceHandler) ConnectSavedNetwork(context.Context, *v1.WifiServiceConnectSavedNetworkRequest) (*v1.WifiServiceConnectSavedNetworkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "nexus.v1.WifiService.ConnectSavedNetwork is not implemented")
+}
+
+func (UnimplementedWifiServiceHandler) ListSavedNetworks(context.Context, *v1.WifiServiceListSavedNetworksRequest) (*v1.WifiServiceListSavedNetworksResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "nexus.v1.WifiService.ListSavedNetworks is not implemented")
+}
+
+func (UnimplementedWifiServiceHandler) SetPreferredNetwork(context.Context, *v1.WifiServiceSetPreferredNetworkRequest) (*v1.WifiServiceSetPreferredNetworkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "nexus.v1.WifiService.SetPreferredNetwork is not implemented")
+}
+
+func (UnimplementedWifiServiceHandler) ForgetNetwork(context.Context, *v1.WifiServiceForgetNetworkRequest) (*v1.WifiServiceForgetNetworkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "nexus.v1.WifiService.ForgetNetwork is not implemented")
 }
 
 type wifiServiceClient struct {
@@ -274,7 +373,7 @@ func (c *wifiServiceClient) GetStatus(ctx context.Context, req *v1.WifiServiceGe
 	return &res, nil
 }
 
-func (c *wifiServiceClient) WatchStatus(ctx context.Context, req *v1.WifiServiceGetStatusRequest) (WifiServiceWatchStatusClientStream, error) {
+func (c *wifiServiceClient) WatchStatus(ctx context.Context, req *v1.WifiServiceWatchStatusRequest) (WifiServiceWatchStatusClientStream, error) {
 	stream, err := c.client.CallServerStream(ctx, wifiServiceWatchStatusSpec(), req)
 	if err != nil {
 		return WifiServiceWatchStatusClientStream{}, err
@@ -285,6 +384,54 @@ func (c *wifiServiceClient) WatchStatus(ctx context.Context, req *v1.WifiService
 func (c *wifiServiceClient) Scan(ctx context.Context, req *v1.ScanRequest) (*v1.ScanResponse, error) {
 	var res v1.ScanResponse
 	if err := c.client.CallUnary(ctx, wifiServiceScanSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *wifiServiceClient) SetEnabled(ctx context.Context, req *v1.WifiServiceSetEnabledRequest) (*v1.WifiServiceSetEnabledResponse, error) {
+	var res v1.WifiServiceSetEnabledResponse
+	if err := c.client.CallUnary(ctx, wifiServiceSetEnabledSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *wifiServiceClient) Connect(ctx context.Context, req *v1.WifiServiceConnectRequest) (*v1.WifiServiceConnectResponse, error) {
+	var res v1.WifiServiceConnectResponse
+	if err := c.client.CallUnary(ctx, wifiServiceConnectSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *wifiServiceClient) ConnectSavedNetwork(ctx context.Context, req *v1.WifiServiceConnectSavedNetworkRequest) (*v1.WifiServiceConnectSavedNetworkResponse, error) {
+	var res v1.WifiServiceConnectSavedNetworkResponse
+	if err := c.client.CallUnary(ctx, wifiServiceConnectSavedNetworkSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *wifiServiceClient) ListSavedNetworks(ctx context.Context, req *v1.WifiServiceListSavedNetworksRequest) (*v1.WifiServiceListSavedNetworksResponse, error) {
+	var res v1.WifiServiceListSavedNetworksResponse
+	if err := c.client.CallUnary(ctx, wifiServiceListSavedNetworksSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *wifiServiceClient) SetPreferredNetwork(ctx context.Context, req *v1.WifiServiceSetPreferredNetworkRequest) (*v1.WifiServiceSetPreferredNetworkResponse, error) {
+	var res v1.WifiServiceSetPreferredNetworkResponse
+	if err := c.client.CallUnary(ctx, wifiServiceSetPreferredNetworkSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *wifiServiceClient) ForgetNetwork(ctx context.Context, req *v1.WifiServiceForgetNetworkRequest) (*v1.WifiServiceForgetNetworkResponse, error) {
+	var res v1.WifiServiceForgetNetworkResponse
+	if err := c.client.CallUnary(ctx, wifiServiceForgetNetworkSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -305,7 +452,7 @@ func (h wifiServiceHandler) getStatus(ctx context.Context, _ connect.Spec, strea
 }
 
 func (h wifiServiceHandler) watchStatus(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
-	var req v1.WifiServiceGetStatusRequest
+	var req v1.WifiServiceWatchStatusRequest
 	if err := stream.Receive(&req); err != nil {
 		return err
 	}
@@ -318,6 +465,78 @@ func (h wifiServiceHandler) scan(ctx context.Context, _ connect.Spec, stream con
 		return err
 	}
 	res, err := h.svc.Scan(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h wifiServiceHandler) setEnabled(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.WifiServiceSetEnabledRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.SetEnabled(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h wifiServiceHandler) connect(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.WifiServiceConnectRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.Connect(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h wifiServiceHandler) connectSavedNetwork(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.WifiServiceConnectSavedNetworkRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ConnectSavedNetwork(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h wifiServiceHandler) listSavedNetworks(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.WifiServiceListSavedNetworksRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ListSavedNetworks(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h wifiServiceHandler) setPreferredNetwork(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.WifiServiceSetPreferredNetworkRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.SetPreferredNetwork(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h wifiServiceHandler) forgetNetwork(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.WifiServiceForgetNetworkRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ForgetNetwork(ctx, &req)
 	if err != nil {
 		return err
 	}
@@ -366,7 +585,7 @@ var (
 type HardwareServiceClient interface {
 	GetStatus(context.Context, *v1.HardwareServiceGetStatusRequest) (*v1.HardwareServiceGetStatusResponse, error)
 	// Sends an initial snapshot and subsequent updates when hardware state changes.
-	WatchStatus(context.Context, *v1.HardwareServiceGetStatusRequest) (HardwareServiceWatchStatusClientStream, error)
+	WatchStatus(context.Context, *v1.HardwareServiceWatchStatusRequest) (HardwareServiceWatchStatusClientStream, error)
 	SetBrightness(context.Context, *v1.SetBrightnessRequest) (*v1.SetBrightnessResponse, error)
 	SetVolume(context.Context, *v1.SetVolumeRequest) (*v1.SetVolumeResponse, error)
 	PowerAction(context.Context, *v1.PowerActionRequest) (*v1.PowerActionResponse, error)
@@ -385,8 +604,8 @@ type HardwareServiceWatchStatusClientStream struct {
 }
 
 // Receive returns the next response message from the server.
-func (s HardwareServiceWatchStatusClientStream) Receive() (*v1.HardwareServiceGetStatusResponse, error) {
-	var res v1.HardwareServiceGetStatusResponse
+func (s HardwareServiceWatchStatusClientStream) Receive() (*v1.HardwareServiceWatchStatusResponse, error) {
+	var res v1.HardwareServiceWatchStatusResponse
 	if err := s.stream.Receive(&res); err != nil {
 		return nil, err
 	}
@@ -403,7 +622,7 @@ func (s HardwareServiceWatchStatusClientStream) Close() error {
 type HardwareServiceHandler interface {
 	GetStatus(context.Context, *v1.HardwareServiceGetStatusRequest) (*v1.HardwareServiceGetStatusResponse, error)
 	// Sends an initial snapshot and subsequent updates when hardware state changes.
-	WatchStatus(context.Context, *v1.HardwareServiceGetStatusRequest, HardwareServiceWatchStatusServerStream) error
+	WatchStatus(context.Context, *v1.HardwareServiceWatchStatusRequest, HardwareServiceWatchStatusServerStream) error
 	SetBrightness(context.Context, *v1.SetBrightnessRequest) (*v1.SetBrightnessResponse, error)
 	SetVolume(context.Context, *v1.SetVolumeRequest) (*v1.SetVolumeResponse, error)
 	PowerAction(context.Context, *v1.PowerActionRequest) (*v1.PowerActionResponse, error)
@@ -434,7 +653,7 @@ func (s HardwareServiceWatchStatusServerStream) SendHeaders() error {
 }
 
 // Send sends a response message to the client.
-func (s HardwareServiceWatchStatusServerStream) Send(res *v1.HardwareServiceGetStatusResponse) error {
+func (s HardwareServiceWatchStatusServerStream) Send(res *v1.HardwareServiceWatchStatusResponse) error {
 	return s.stream.Send(res)
 }
 
@@ -445,7 +664,7 @@ func (UnimplementedHardwareServiceHandler) GetStatus(context.Context, *v1.Hardwa
 	return nil, connect.NewError(connect.CodeUnimplemented, "nexus.v1.HardwareService.GetStatus is not implemented")
 }
 
-func (UnimplementedHardwareServiceHandler) WatchStatus(context.Context, *v1.HardwareServiceGetStatusRequest, HardwareServiceWatchStatusServerStream) error {
+func (UnimplementedHardwareServiceHandler) WatchStatus(context.Context, *v1.HardwareServiceWatchStatusRequest, HardwareServiceWatchStatusServerStream) error {
 	return connect.NewError(connect.CodeUnimplemented, "nexus.v1.HardwareService.WatchStatus is not implemented")
 }
 
@@ -473,7 +692,7 @@ func (c *hardwareServiceClient) GetStatus(ctx context.Context, req *v1.HardwareS
 	return &res, nil
 }
 
-func (c *hardwareServiceClient) WatchStatus(ctx context.Context, req *v1.HardwareServiceGetStatusRequest) (HardwareServiceWatchStatusClientStream, error) {
+func (c *hardwareServiceClient) WatchStatus(ctx context.Context, req *v1.HardwareServiceWatchStatusRequest) (HardwareServiceWatchStatusClientStream, error) {
 	stream, err := c.client.CallServerStream(ctx, hardwareServiceWatchStatusSpec(), req)
 	if err != nil {
 		return HardwareServiceWatchStatusClientStream{}, err
@@ -520,7 +739,7 @@ func (h hardwareServiceHandler) getStatus(ctx context.Context, _ connect.Spec, s
 }
 
 func (h hardwareServiceHandler) watchStatus(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
-	var req v1.HardwareServiceGetStatusRequest
+	var req v1.HardwareServiceWatchStatusRequest
 	if err := stream.Receive(&req); err != nil {
 		return err
 	}

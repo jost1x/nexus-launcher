@@ -1,5 +1,6 @@
 #include "rpc/rpc_client.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -65,6 +66,22 @@ uint64_t RpcClient::watch_wifi_status() {
     return wifi_watch_id_;
 }
 uint64_t RpcClient::scan_wifi(bool refresh) { return submit(RpcOperation::WifiScan, 0, refresh); }
+uint64_t RpcClient::list_saved_wifi_networks() { return submit_wifi(RpcOperation::WifiSavedNetworks); }
+uint64_t RpcClient::set_wifi_enabled(bool enabled) {
+    return submit_wifi(RpcOperation::WifiSetEnabled, {}, {}, {}, enabled);
+}
+uint64_t RpcClient::connect_wifi(std::string ssid, std::string password, std::string security) {
+    return submit_wifi(RpcOperation::WifiConnect, std::move(ssid), std::move(password), std::move(security));
+}
+uint64_t RpcClient::connect_saved_wifi_network(std::string id) {
+    return submit_wifi(RpcOperation::WifiConnectSaved, std::move(id));
+}
+uint64_t RpcClient::set_preferred_wifi_network(std::string id) {
+    return submit_wifi(RpcOperation::WifiSetPreferred, std::move(id));
+}
+uint64_t RpcClient::forget_wifi_network(std::string id) {
+    return submit_wifi(RpcOperation::WifiForget, std::move(id));
+}
 uint64_t RpcClient::request_hardware_status() { return submit(RpcOperation::HardwareStatus); }
 uint64_t RpcClient::watch_hardware_status() {
     std::lock_guard lock(mutex_);
@@ -85,7 +102,33 @@ uint64_t RpcClient::submit(RpcOperation operation, int percent, bool refresh) {
     std::lock_guard lock(mutex_);
     if (stopping_) return 0;
     const auto id = next_id_++;
-    queue_.push_back(Task{id, operation, percent, refresh, std::move(context)});
+    Task task{};
+    task.id = id;
+    task.operation = operation;
+    task.percent = percent;
+    task.refresh = refresh;
+    task.context = std::move(context);
+    queue_.push_back(std::move(task));
+    ready_.notify_all();
+    return id;
+}
+
+uint64_t RpcClient::submit_wifi(RpcOperation operation, std::string text, std::string secret,
+                               std::string security, bool enabled) {
+    auto context = std::make_shared<grpc::ClientContext>();
+    context->set_deadline(std::chrono::system_clock::now() + 15s);
+    std::lock_guard lock(mutex_);
+    if (stopping_) return 0;
+    Task task{};
+    task.id = next_id_++;
+    task.operation = operation;
+    task.text = std::move(text);
+    task.secret = std::move(secret);
+    task.security = std::move(security);
+    task.enabled = enabled;
+    task.context = std::move(context);
+    const auto id = task.id;
+    queue_.push_back(std::move(task));
     ready_.notify_all();
     return id;
 }
@@ -128,6 +171,8 @@ void RpcClient::run() {
             active_id_ = task.id;
         }
         auto result = invoke(task);
+        std::fill(task.secret.begin(), task.secret.end(), '\0');
+        task.secret.clear();
         {
             std::lock_guard lock(mutex_);
             completed_.push_back(std::move(result));

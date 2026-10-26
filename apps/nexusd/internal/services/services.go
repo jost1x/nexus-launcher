@@ -2,11 +2,15 @@ package services
 
 import (
 	"context"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
 	nexusv1 "nexusd/gen/nexus/v1"
 	nexusv1connect "nexusd/gen/nexus/v1/nexusv1connect"
@@ -46,17 +50,257 @@ type Wifi struct {
 func (s *Wifi) GetStatus(ctx context.Context, _ *nexusv1.WifiServiceGetStatusRequest) (*nexusv1.WifiServiceGetStatusResponse, error) {
 	return s.Adapter.WifiStatus(ctx)
 }
-func (s *Wifi) WatchStatus(ctx context.Context, _ *nexusv1.WifiServiceGetStatusRequest, stream nexusv1connect.WifiServiceWatchStatusServerStream) error {
+
+func (s *Wifi) SetEnabled(ctx context.Context, req *nexusv1.WifiServiceSetEnabledRequest) (*nexusv1.WifiServiceSetEnabledResponse, error) {
+	if err := s.Adapter.SetWifiEnabled(ctx, req.GetEnabled()); err != nil {
+		return nil, err
+	}
+	if req.GetEnabled() {
+		if err := s.Adapter.RestoreWifiProfiles(ctx); err != nil {
+			return nil, err
+		}
+	}
+	status, err := s.Adapter.WifiStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &nexusv1.WifiServiceSetEnabledResponse{Enabled: status.RadioEnabled, RadioStateAvailable: status.RadioStateAvailable}, nil
+}
+
+func (s *Wifi) ListSavedNetworks(ctx context.Context, _ *nexusv1.WifiServiceListSavedNetworksRequest) (*nexusv1.WifiServiceListSavedNetworksResponse, error) {
+	profiles, err := s.Adapter.LoadWifiProfiles()
+	if err != nil {
+		return nil, connectError("saved Wi-Fi networks are unavailable", err)
+	}
+	status, _ := s.Adapter.WifiStatus(ctx)
+	sort.SliceStable(profiles, func(i, j int) bool { return profiles[i].Priority > profiles[j].Priority })
+	return platform.WifiProfileResponse(profiles, status), nil
+}
+
+func (s *Wifi) Connect(ctx context.Context, req *nexusv1.WifiServiceConnectRequest) (*nexusv1.WifiServiceConnectResponse, error) {
+	ssid := req.GetSsid()
+	if ssid == "" || len([]byte(ssid)) > 32 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, "SSID must contain between 1 and 32 bytes")
+	}
+	security := strings.ToLower(strings.TrimSpace(req.GetSecurity()))
+	if security != "open" && security != "secured" && security != "wpa-psk" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, "unsupported Wi-Fi security type")
+	}
+	password := req.GetPassword()
+	if security == "open" {
+		password = ""
+	} else if len(password) < 8 || (len(password) > 63 && !isHexPSK(password)) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, "Wi-Fi password must be 8–63 characters or a 64-character hexadecimal PSK")
+	}
+	status, err := s.Adapter.WifiStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if status.RadioStateAvailable && !status.RadioEnabled {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, "Wi-Fi is disabled")
+	}
+	if status.Interface == "" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, "no Wi-Fi interface is available")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	profiles, err := s.Adapter.LoadWifiProfiles()
+	if err != nil {
+		return nil, connectError("saved Wi-Fi networks are unavailable", err)
+	}
+	previousProfiles := append([]platform.WifiProfile(nil), profiles...)
+	profileIndex := -1
+	for index := range profiles {
+		if profiles[index].SSID == ssid {
+			profileIndex = index
+			break
+		}
+	}
+	profile := platform.WifiProfile{SSID: ssid, Password: password, Security: security, Preferred: true}
+	if profileIndex >= 0 {
+		profile.ID = profiles[profileIndex].ID
+		profiles = append(profiles[:profileIndex], profiles[profileIndex+1:]...)
+	} else {
+		profile.ID, err = platform.NewWifiProfileID()
+		if err != nil {
+			return nil, err
+		}
+	}
+	profiles = append([]platform.WifiProfile{profile}, profiles...)
+	normalizeWifiProfiles(profiles)
+	if err := s.Adapter.SaveWifiProfiles(profiles); err != nil {
+		return nil, connectError("could not save the Wi-Fi network", err)
+	}
+	if err := s.applyProfiles(ctx, status.Interface, profiles); err != nil {
+		_ = s.Adapter.SaveWifiProfiles(previousProfiles)
+		return nil, err
+	}
+	if err := s.Adapter.WaitWifiConnected(ctx, status.Interface, ssid, 11*time.Second); err != nil {
+		_ = s.Adapter.SaveWifiProfiles(previousProfiles)
+		if networkID, found, findErr := s.Adapter.FindWpaProfile(ctx, status.Interface, profile.ID); findErr == nil && found {
+			_, _ = s.Adapter.WPARequest(ctx, status.Interface, fmt.Sprintf("REMOVE_NETWORK %d", networkID))
+		}
+		_ = s.applyProfiles(ctx, status.Interface, previousProfiles)
+		return nil, connect.NewError(connect.CodeUnavailable, "Wi-Fi connection failed; check the password, signal, and network type")
+	}
+	current, err := s.Adapter.WifiStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &nexusv1.WifiServiceConnectResponse{State: current.State, Connected: current.Connected, Ssid: current.Ssid}, nil
+}
+
+func (s *Wifi) ConnectSavedNetwork(ctx context.Context, req *nexusv1.WifiServiceConnectSavedNetworkRequest) (*nexusv1.WifiServiceConnectSavedNetworkResponse, error) {
+	status, err := s.Adapter.WifiStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if status.RadioStateAvailable && !status.RadioEnabled {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, "Wi-Fi is disabled")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	profiles, err := s.Adapter.LoadWifiProfiles()
+	if err != nil {
+		return nil, connectError("saved Wi-Fi networks are unavailable", err)
+	}
+	index := findProfile(profiles, req.GetId())
+	if index < 0 {
+		return nil, connect.NewError(connect.CodeNotFound, "saved Wi-Fi network was not found")
+	}
+	profile := profiles[index]
+	profiles = append([]platform.WifiProfile{profile}, append(profiles[:index], profiles[index+1:]...)...)
+	normalizeWifiProfiles(profiles)
+	if err := s.Adapter.SaveWifiProfiles(profiles); err != nil {
+		return nil, connectError("could not update the preferred Wi-Fi network", err)
+	}
+	if status.Interface == "" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, "no Wi-Fi interface is available")
+	}
+	if err := s.applyProfiles(ctx, status.Interface, profiles); err != nil {
+		return nil, err
+	}
+	if err := s.Adapter.WaitWifiConnected(ctx, status.Interface, profile.SSID, 11*time.Second); err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, "could not connect to the saved Wi-Fi network")
+	}
+	current, err := s.Adapter.WifiStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &nexusv1.WifiServiceConnectSavedNetworkResponse{State: current.State, Connected: current.Connected, Ssid: current.Ssid}, nil
+}
+
+func (s *Wifi) SetPreferredNetwork(ctx context.Context, req *nexusv1.WifiServiceSetPreferredNetworkRequest) (*nexusv1.WifiServiceSetPreferredNetworkResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	profiles, err := s.Adapter.LoadWifiProfiles()
+	if err != nil {
+		return nil, connectError("saved Wi-Fi networks are unavailable", err)
+	}
+	index := findProfile(profiles, req.GetId())
+	if index < 0 {
+		return nil, connect.NewError(connect.CodeNotFound, "saved Wi-Fi network was not found")
+	}
+	profile := profiles[index]
+	profiles = append([]platform.WifiProfile{profile}, append(profiles[:index], profiles[index+1:]...)...)
+	normalizeWifiProfiles(profiles)
+	if err := s.Adapter.SaveWifiProfiles(profiles); err != nil {
+		return nil, connectError("could not save the preferred Wi-Fi network", err)
+	}
+	status, _ := s.Adapter.WifiStatus(ctx)
+	if status != nil && status.Interface != "" {
+		if err := s.applyProfiles(ctx, status.Interface, profiles); err != nil {
+			return nil, err
+		}
+	}
+	return &nexusv1.WifiServiceSetPreferredNetworkResponse{Networks: platform.WifiProfileResponse(profiles, status).GetNetworks()}, nil
+}
+
+func (s *Wifi) ForgetNetwork(ctx context.Context, req *nexusv1.WifiServiceForgetNetworkRequest) (*nexusv1.WifiServiceForgetNetworkResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	profiles, err := s.Adapter.LoadWifiProfiles()
+	if err != nil {
+		return nil, connectError("saved Wi-Fi networks are unavailable", err)
+	}
+	index := findProfile(profiles, req.GetId())
+	if index < 0 {
+		return nil, connect.NewError(connect.CodeNotFound, "saved Wi-Fi network was not found")
+	}
+	profile := profiles[index]
+	profiles = append(profiles[:index], profiles[index+1:]...)
+	if len(profiles) > 0 {
+		normalizeWifiProfiles(profiles)
+	}
+	if err := s.Adapter.SaveWifiProfiles(profiles); err != nil {
+		return nil, connectError("could not forget the Wi-Fi network", err)
+	}
+	status, _ := s.Adapter.WifiStatus(ctx)
+	if status != nil && status.Interface != "" {
+		if networkID, found, findErr := s.Adapter.FindWpaProfile(ctx, status.Interface, profile.ID); findErr == nil && found {
+			_, _ = s.Adapter.WPARequest(ctx, status.Interface, fmt.Sprintf("REMOVE_NETWORK %d", networkID))
+		}
+	}
+	return &nexusv1.WifiServiceForgetNetworkResponse{Networks: platform.WifiProfileResponse(profiles, status).GetNetworks()}, nil
+}
+
+func (s *Wifi) applyProfiles(ctx context.Context, iface string, profiles []platform.WifiProfile) error {
+	for _, profile := range profiles {
+		if err := s.Adapter.ApplyWpaProfile(ctx, iface, profile); err != nil {
+			return connect.NewError(connect.CodeUnavailable, "saved Wi-Fi profiles could not be configured through wpa_supplicant")
+		}
+	}
+	if len(profiles) > 0 {
+		if _, err := s.Adapter.WPARequest(ctx, iface, "REASSOCIATE"); err != nil {
+			return connect.NewError(connect.CodeUnavailable, "could not start the Wi-Fi connection")
+		}
+	}
+	return nil
+}
+
+func findProfile(profiles []platform.WifiProfile, id string) int {
+	for index := range profiles {
+		if profiles[index].ID == id {
+			return index
+		}
+	}
+	return -1
+}
+
+func normalizeWifiProfiles(profiles []platform.WifiProfile) {
+	for index := range profiles {
+		profiles[index].Preferred = index == 0
+		profiles[index].Priority = len(profiles) - index
+	}
+}
+
+func isHexPSK(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+func connectError(message string, cause error) error {
+	if cause == nil {
+		return errors.New(message)
+	}
+	return connect.NewError(connect.CodeUnavailable, fmt.Sprintf("%s: %v", message, cause))
+}
+func (s *Wifi) WatchStatus(ctx context.Context, _ *nexusv1.WifiServiceWatchStatusRequest, stream nexusv1connect.WifiServiceWatchStatusServerStream) error {
 	if s.Watcher == nil {
 		return fmt.Errorf("Wi-Fi status notifications are unavailable")
 	}
 	updates, unsubscribe := s.Watcher.subscribe()
 	defer unsubscribe()
 
-	previous, err := s.Adapter.WifiStatus(ctx)
+	initial, err := s.Adapter.WifiStatus(ctx)
 	if err != nil {
 		return err
 	}
+	previous := wifiWatchStatus(initial)
 	if err := stream.Send(previous); err != nil {
 		return err
 	}
@@ -65,10 +309,11 @@ func (s *Wifi) WatchStatus(ctx context.Context, _ *nexusv1.WifiServiceGetStatusR
 		case <-ctx.Done():
 			return nil
 		case <-updates:
-			current, err := s.Adapter.WifiStatus(ctx)
+			currentStatus, err := s.Adapter.WifiStatus(ctx)
 			if err != nil {
 				return err
 			}
+			current := wifiWatchStatus(currentStatus)
 			if proto.Equal(previous, current) {
 				continue
 			}
@@ -168,17 +413,18 @@ func (s Hardware) notifyStatusChanged() {
 func (s Hardware) GetStatus(ctx context.Context, _ *nexusv1.HardwareServiceGetStatusRequest) (*nexusv1.HardwareServiceGetStatusResponse, error) {
 	return s.Adapter.HardwareStatus(ctx)
 }
-func (s Hardware) WatchStatus(ctx context.Context, _ *nexusv1.HardwareServiceGetStatusRequest, stream nexusv1connect.HardwareServiceWatchStatusServerStream) error {
+func (s Hardware) WatchStatus(ctx context.Context, _ *nexusv1.HardwareServiceWatchStatusRequest, stream nexusv1connect.HardwareServiceWatchStatusServerStream) error {
 	if s.Watcher == nil {
 		return fmt.Errorf("hardware status notifications are unavailable")
 	}
 	updates, unsubscribe := s.Watcher.subscribe()
 	defer unsubscribe()
 
-	previous, err := s.Adapter.HardwareStatus(ctx)
+	initial, err := s.Adapter.HardwareStatus(ctx)
 	if err != nil {
 		return err
 	}
+	previous := hardwareWatchStatus(initial)
 	if err := stream.Send(previous); err != nil {
 		return err
 	}
@@ -187,10 +433,11 @@ func (s Hardware) WatchStatus(ctx context.Context, _ *nexusv1.HardwareServiceGet
 		case <-ctx.Done():
 			return nil
 		case <-updates:
-			current, err := s.Adapter.HardwareStatus(ctx)
+			currentStatus, err := s.Adapter.HardwareStatus(ctx)
 			if err != nil {
 				return err
 			}
+			current := hardwareWatchStatus(currentStatus)
 			if proto.Equal(previous, current) {
 				continue
 			}
@@ -201,6 +448,28 @@ func (s Hardware) WatchStatus(ctx context.Context, _ *nexusv1.HardwareServiceGet
 		}
 	}
 }
+
+func wifiWatchStatus(status *nexusv1.WifiServiceGetStatusResponse) *nexusv1.WifiServiceWatchStatusResponse {
+	return &nexusv1.WifiServiceWatchStatusResponse{
+		Interface: status.Interface, State: status.State, Connected: status.Connected, Ssid: status.Ssid,
+		Manager: status.Manager, Detail: status.Detail, Bssid: status.Bssid,
+		RadioEnabled: status.RadioEnabled, RadioStateAvailable: status.RadioStateAvailable,
+	}
+}
+
+func hardwareWatchStatus(status *nexusv1.HardwareServiceGetStatusResponse) *nexusv1.HardwareServiceWatchStatusResponse {
+	return &nexusv1.HardwareServiceWatchStatusResponse{
+		BatteryAvailable: status.BatteryAvailable, BatteryStatus: status.BatteryStatus,
+		BatteryPercent: status.BatteryPercent, BatteryVoltageMicrovolts: status.BatteryVoltageMicrovolts,
+		ThermalAvailable: status.ThermalAvailable, SocTemperatureCelsius: status.SocTemperatureCelsius,
+		BrightnessAvailable: status.BrightnessAvailable, Brightness: status.Brightness,
+		BrightnessMax: status.BrightnessMax, AudioAvailable: status.AudioAvailable, AudioDetail: status.AudioDetail,
+		VolumeAvailable: status.VolumeAvailable, VolumePercent: status.VolumePercent,
+		ChargerAvailable: status.ChargerAvailable, ChargerConnected: status.ChargerConnected,
+		BatteryCharging: status.BatteryCharging,
+	}
+}
+
 func (s Hardware) SetBrightness(_ context.Context, req *nexusv1.SetBrightnessRequest) (*nexusv1.SetBrightnessResponse, error) {
 	value, err := s.Adapter.SetBrightness(int(req.GetPercent()), req.GetConfirmed())
 	if err != nil {

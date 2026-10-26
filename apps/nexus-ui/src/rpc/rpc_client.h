@@ -17,14 +17,25 @@
 
 namespace nexus {
 
-enum class RpcOperation { WifiStatus, WifiWatch, WifiScan, HardwareStatus, HardwareWatch, SystemInfo, SetBrightness, SetVolume };
+enum class RpcOperation {
+    WifiStatus, WifiWatch, WifiScan, WifiSavedNetworks, WifiSetEnabled, WifiConnect, WifiConnectSaved,
+    WifiSetPreferred, WifiForget, HardwareStatus, HardwareWatch, SystemInfo, SetBrightness, SetVolume
+};
 
 using RpcPayload = std::variant<nexus::v1::WifiServiceGetStatusResponse,
+                                nexus::v1::WifiServiceWatchStatusResponse,
                                 nexus::v1::ScanResponse,
                                 nexus::v1::HardwareServiceGetStatusResponse,
+                                nexus::v1::HardwareServiceWatchStatusResponse,
                                 nexus::v1::GetInfoResponse,
                                 nexus::v1::SetBrightnessResponse,
-                                nexus::v1::SetVolumeResponse>;
+                                nexus::v1::SetVolumeResponse,
+                                nexus::v1::WifiServiceListSavedNetworksResponse,
+                                nexus::v1::WifiServiceSetEnabledResponse,
+                                nexus::v1::WifiServiceConnectResponse,
+                                nexus::v1::WifiServiceConnectSavedNetworkResponse,
+                                nexus::v1::WifiServiceSetPreferredNetworkResponse,
+                                nexus::v1::WifiServiceForgetNetworkResponse>;
 
 struct RpcResult {
     uint64_t id = 0;
@@ -43,6 +54,12 @@ public:
     uint64_t request_wifi_status();
     uint64_t watch_wifi_status();
     uint64_t scan_wifi(bool refresh = true);
+    uint64_t list_saved_wifi_networks();
+    uint64_t set_wifi_enabled(bool enabled);
+    uint64_t connect_wifi(std::string ssid, std::string password, std::string security);
+    uint64_t connect_saved_wifi_network(std::string id);
+    uint64_t set_preferred_wifi_network(std::string id);
+    uint64_t forget_wifi_network(std::string id);
     uint64_t request_hardware_status();
     uint64_t watch_hardware_status();
     uint64_t request_system_info();
@@ -57,10 +74,16 @@ private:
         RpcOperation operation;
         int percent;
         bool refresh;
+        bool enabled = false;
+        std::string text;
+        std::string secret;
+        std::string security;
         std::shared_ptr<grpc::ClientContext> context;
     };
 
     uint64_t submit(RpcOperation operation, int percent = 0, bool refresh = false);
+    uint64_t submit_wifi(RpcOperation operation, std::string text = {}, std::string secret = {},
+                         std::string security = {}, bool enabled = false);
     void run();
     void run_wifi_watch(uint64_t id);
     void run_hardware_watch(uint64_t id);

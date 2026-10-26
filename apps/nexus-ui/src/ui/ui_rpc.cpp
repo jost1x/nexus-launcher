@@ -13,6 +13,42 @@ int brightness_percent(const nexus::v1::HardwareServiceGetStatusResponse& status
     return static_cast<int>(status.brightness() * 100 / std::max<int64_t>(1, status.brightness_max()));
 }
 
+nexus::v1::WifiServiceGetStatusResponse wifi_status_from_watch(const nexus::v1::WifiServiceWatchStatusResponse& status) {
+    nexus::v1::WifiServiceGetStatusResponse result;
+    result.set_interface(status.interface());
+    result.set_state(status.state());
+    result.set_connected(status.connected());
+    result.set_ssid(status.ssid());
+    result.set_manager(status.manager());
+    result.set_detail(status.detail());
+    result.set_bssid(status.bssid());
+    result.set_radio_enabled(status.radio_enabled());
+    result.set_radio_state_available(status.radio_state_available());
+    return result;
+}
+
+nexus::v1::HardwareServiceGetStatusResponse hardware_status_from_watch(
+    const nexus::v1::HardwareServiceWatchStatusResponse& status) {
+    nexus::v1::HardwareServiceGetStatusResponse result;
+    result.set_battery_available(status.battery_available());
+    result.set_battery_status(status.battery_status());
+    result.set_battery_percent(status.battery_percent());
+    result.set_battery_voltage_microvolts(status.battery_voltage_microvolts());
+    result.set_thermal_available(status.thermal_available());
+    result.set_soc_temperature_celsius(status.soc_temperature_celsius());
+    result.set_brightness_available(status.brightness_available());
+    result.set_brightness(status.brightness());
+    result.set_brightness_max(status.brightness_max());
+    result.set_audio_available(status.audio_available());
+    result.set_audio_detail(status.audio_detail());
+    result.set_volume_available(status.volume_available());
+    result.set_volume_percent(status.volume_percent());
+    result.set_charger_available(status.charger_available());
+    result.set_charger_connected(status.charger_connected());
+    result.set_battery_charging(status.battery_charging());
+    return result;
+}
+
 bool same_hardware_view(View view,
                         const UiState& state,
                         const nexus::v1::HardwareServiceGetStatusResponse& previous,
@@ -94,6 +130,37 @@ void UiController::collect_results() {
                     state_.wifi_scan_loading = false;
                     state_.wifi_scan_error = message;
                     break;
+                case RpcOperation::WifiSavedNetworks:
+                    if (result.id != wifi_saved_id_) continue;
+                    wifi_saved_id_ = 0;
+                    state_.wifi_saved_loading = false;
+                    state_.wifi_saved_error = "No se pudieron cargar las redes guardadas.";
+                    break;
+                case RpcOperation::WifiSetEnabled:
+                    if (result.id != wifi_set_enabled_id_) continue;
+                    wifi_set_enabled_id_ = 0;
+                    state_.wifi_action_message = "No se pudo cambiar el estado del Wi-Fi.";
+                    break;
+                case RpcOperation::WifiConnect:
+                    if (result.id != wifi_connect_id_) continue;
+                    wifi_connect_id_ = 0;
+                    state_.wifi_action_message = "No se pudo conectar. Revisa la contraseña y el control de red.";
+                    break;
+                case RpcOperation::WifiConnectSaved:
+                    if (result.id != wifi_connect_saved_id_) continue;
+                    wifi_connect_saved_id_ = 0;
+                    state_.wifi_action_message = "No se pudo conectar a esa red guardada.";
+                    break;
+                case RpcOperation::WifiSetPreferred:
+                    if (result.id != wifi_preferred_id_) continue;
+                    wifi_preferred_id_ = 0;
+                    state_.wifi_action_message = "No se pudo cambiar la red preferida.";
+                    break;
+                case RpcOperation::WifiForget:
+                    if (result.id != wifi_forget_id_) continue;
+                    wifi_forget_id_ = 0;
+                    state_.wifi_action_message = "No se pudo olvidar esa red.";
+                    break;
                 case RpcOperation::HardwareStatus:
                     if (result.id != hardware_id_) continue;
                     message = "No se pudo consultar el hardware (código " + code + ").";
@@ -146,7 +213,8 @@ void UiController::collect_results() {
                 break;
             case RpcOperation::WifiWatch:
                 if (result.id != wifi_watch_id_) continue;
-                state_.wifi_status = std::get<nexus::v1::WifiServiceGetStatusResponse>(std::move(result.payload));
+                state_.wifi_status = wifi_status_from_watch(
+                    std::get<nexus::v1::WifiServiceWatchStatusResponse>(result.payload));
                 state_.wifi_status_error.clear();
                 state_.wifi_status_loading = false;
                 break;
@@ -166,13 +234,102 @@ void UiController::collect_results() {
                 wifi_scan_id_ = 0;
                 break;
             }
+            case RpcOperation::WifiSavedNetworks:
+                if (result.id != wifi_saved_id_) continue;
+                state_.saved_wifi_networks = std::get<nexus::v1::WifiServiceListSavedNetworksResponse>(std::move(result.payload));
+                state_.wifi_saved_error.clear();
+                state_.wifi_saved_loading = false;
+                wifi_saved_id_ = 0;
+                break;
+            case RpcOperation::WifiSetEnabled:
+                if (result.id != wifi_set_enabled_id_) continue;
+                {
+                    const auto response = std::get<nexus::v1::WifiServiceSetEnabledResponse>(std::move(result.payload));
+                    if (!state_.wifi_status) state_.wifi_status.emplace();
+                    state_.wifi_status->set_radio_enabled(response.enabled());
+                    state_.wifi_status->set_radio_state_available(response.radio_state_available());
+                    state_.wifi_status->set_state(response.enabled() ? "up" : "down");
+                    if (!response.enabled()) {
+                        state_.wifi_status->set_connected(false);
+                        state_.wifi_status->clear_ssid();
+                    }
+                }
+                state_.wifi_action_message = state_.wifi_status->radio_enabled() ? "Wi-Fi activado." : "Wi-Fi desactivado.";
+                wifi_set_enabled_id_ = 0;
+                if (state_.wifi_status->radio_enabled() && wifi_scan_id_ == 0) {
+                    state_.wifi_scan_loading = true;
+                    wifi_scan_id_ = rpc_.scan_wifi(true);
+                }
+                break;
+            case RpcOperation::WifiConnect:
+                if (result.id != wifi_connect_id_) continue;
+                {
+                    const auto response = std::get<nexus::v1::WifiServiceConnectResponse>(std::move(result.payload));
+                    if (!state_.wifi_status) state_.wifi_status.emplace();
+                    state_.wifi_status->set_state(response.state());
+                    state_.wifi_status->set_connected(response.connected());
+                    state_.wifi_status->set_ssid(response.ssid());
+                }
+                state_.wifi_action_message = "Red guardada como preferida. Conectando...";
+                wifi_connect_id_ = 0;
+                state_.saved_wifi_networks.reset();
+                state_.wifi_saved_loading = true;
+                wifi_saved_id_ = rpc_.list_saved_wifi_networks();
+                if (wifi_scan_id_ == 0) {
+                    state_.wifi_scan_loading = true;
+                    wifi_scan_id_ = rpc_.scan_wifi(true);
+                }
+                break;
+            case RpcOperation::WifiConnectSaved:
+                if (result.id != wifi_connect_saved_id_) continue;
+                {
+                    const auto response = std::get<nexus::v1::WifiServiceConnectSavedNetworkResponse>(std::move(result.payload));
+                    if (!state_.wifi_status) state_.wifi_status.emplace();
+                    state_.wifi_status->set_state(response.state());
+                    state_.wifi_status->set_connected(response.connected());
+                    state_.wifi_status->set_ssid(response.ssid());
+                }
+                state_.wifi_action_message = "Conectando a la red preferida...";
+                wifi_connect_saved_id_ = 0;
+                state_.saved_wifi_networks.reset();
+                state_.wifi_saved_loading = true;
+                wifi_saved_id_ = rpc_.list_saved_wifi_networks();
+                if (wifi_scan_id_ == 0) {
+                    state_.wifi_scan_loading = true;
+                    wifi_scan_id_ = rpc_.scan_wifi(true);
+                }
+                break;
+            case RpcOperation::WifiSetPreferred: {
+                if (result.id != wifi_preferred_id_) continue;
+                auto response = std::get<nexus::v1::WifiServiceSetPreferredNetworkResponse>(std::move(result.payload));
+                nexus::v1::WifiServiceListSavedNetworksResponse saved;
+                for (const auto& network : response.networks()) *saved.add_networks() = network;
+                state_.saved_wifi_networks = std::move(saved);
+                state_.wifi_action_message = "Red preferida actualizada.";
+                wifi_preferred_id_ = 0;
+                break;
+            }
+            case RpcOperation::WifiForget: {
+                if (result.id != wifi_forget_id_) continue;
+                auto response = std::get<nexus::v1::WifiServiceForgetNetworkResponse>(std::move(result.payload));
+                nexus::v1::WifiServiceListSavedNetworksResponse saved;
+                for (const auto& network : response.networks()) *saved.add_networks() = network;
+                state_.saved_wifi_networks = std::move(saved);
+                state_.wifi_action_message = "Red olvidada.";
+                wifi_forget_id_ = 0;
+                break;
+            }
             case RpcOperation::HardwareStatus:
                 if (result.id != hardware_id_) continue;
                 [[fallthrough]];
             case RpcOperation::HardwareWatch:
                 if (result.operation == RpcOperation::HardwareWatch && result.id != hardware_watch_id_) continue;
                 {
-                    auto response = std::get<nexus::v1::HardwareServiceGetStatusResponse>(std::move(result.payload));
+                    auto response = result.operation == RpcOperation::HardwareWatch
+                                        ? hardware_status_from_watch(
+                                              std::get<nexus::v1::HardwareServiceWatchStatusResponse>(result.payload))
+                                        : std::get<nexus::v1::HardwareServiceGetStatusResponse>(
+                                              std::move(result.payload));
                     update_view = !state_.hardware ||
                                   !same_hardware_view(view_, state_, *state_.hardware, response) ||
                                   !state_.hardware_error.empty() || state_.hardware_loading;

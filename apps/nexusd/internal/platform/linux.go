@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,11 +23,13 @@ import (
 
 // Linux contains read-only discovery and narrowly scoped hardware operations.
 type Linux struct {
-	SysRoot  string
-	ProcRoot string
-	DevRoot  string
-	LookPath func(string) (string, error)
-	Run      func(context.Context, string, ...string) ([]byte, error)
+	SysRoot       string
+	ProcRoot      string
+	DevRoot       string
+	WifiStateDir  string
+	wifiControlMu sync.Mutex
+	LookPath      func(string) (string, error)
+	Run           func(context.Context, string, ...string) ([]byte, error)
 }
 
 func NewLinux() *Linux {
@@ -255,6 +258,8 @@ func (p *Linux) Capabilities(ctx context.Context) *nexusv1.ListCapabilitiesRespo
 		{Name: "system.info", Available: true, Detail: "Linux procfs and os-release"},
 		{Name: "wifi.status", Available: false, Detail: "No wireless interface detected"},
 		{Name: "wifi.scan", Available: false, Detail: "Requires iw and scan permissions"},
+		{Name: "wifi.radio", Available: false, Detail: "Requires rfkill and radio-control permissions"},
+		{Name: "wifi.connect", Available: false, Detail: "Requires an accessible wpa_supplicant control socket"},
 		{Name: "hardware.battery", Available: false, Detail: "No power_supply entries detected"},
 		{Name: "hardware.thermal", Available: false, Detail: "No thermal zones detected"},
 		{Name: "hardware.brightness", Available: false, Detail: "No backlight sysfs entry detected"},
@@ -274,30 +279,43 @@ func (p *Linux) Capabilities(ctx context.Context) *nexusv1.ListCapabilitiesRespo
 	} else if !wifiAvailable {
 		items[2].Detail = "No wireless interface detected"
 	}
-	if entries, _ := filepath.Glob(filepath.Join(p.SysRoot, "class/power_supply/*")); len(entries) > 0 {
+	if _, available := p.rfkillState(ctx); available {
 		items[3].Available = true
-		items[3].Detail = "Power supply sysfs entries detected"
+		items[3].Detail = "rfkill reports the Wi-Fi radio state"
+	}
+	if wifiAvailable {
+		if iface, err := p.wifiInterface(""); err == nil {
+			if response, err := p.WPARequest(ctx, iface, "PING"); err == nil && response == "PONG" {
+				items[4].Available = true
+				items[4].Detail = "wpa_supplicant control socket is accessible"
+			}
+		}
+	}
+	if entries, _ := filepath.Glob(filepath.Join(p.SysRoot, "class/power_supply/*")); len(entries) > 0 {
+		items[5].Available = true
+		items[5].Detail = "Power supply sysfs entries detected"
 	}
 	if entries, _ := filepath.Glob(filepath.Join(p.SysRoot, "class/thermal/thermal_zone*")); len(entries) > 0 {
-		items[4].Available = true
-		items[4].Detail = "Thermal zones detected"
+		items[6].Available = true
+		items[6].Detail = "Thermal zones detected"
 	}
 	if _, err := p.backlight(); err == nil {
-		items[5].Available = true
-		items[5].Detail = "Backlight sysfs entry detected; writes may require permissions"
+		items[7].Available = true
+		items[7].Detail = "Backlight sysfs entry detected; writes may require permissions"
 	}
 	_, sndErr := os.Stat("/dev/snd")
 	if sndErr == nil || (p.LookPath != nil && look(p.LookPath, "amixer")) {
-		items[6].Available = true
-		items[6].Detail = "ALSA device or amixer detected"
+		items[8].Available = true
+		items[8].Detail = "ALSA device or amixer detected"
 	}
 	if _, err := p.masterControl(ctx); err == nil {
-		items[7].Available = true
-		items[7].Detail = "Supported ALSA mixer control detected"
+		items[9].Available = true
+		items[9].Detail = "Supported ALSA mixer control detected"
 	}
 	if p.isR36S() {
 		for _, item := range items {
-			if item.Available && item.Name != "hardware.power_action" && item.Name != "wifi.scan" {
+			if item.Available && item.Name != "hardware.power_action" && item.Name != "wifi.scan" &&
+				item.Name != "wifi.radio" && item.Name != "wifi.connect" {
 				item.VerifiedOnR36S = true
 			}
 		}
@@ -314,6 +332,10 @@ func (p *Linux) WifiStatus(ctx context.Context) (*nexusv1.WifiServiceGetStatusRe
 	}
 	state, _ := os.ReadFile(filepath.Join(p.SysRoot, "class/net", iface, "operstate"))
 	status := &nexusv1.WifiServiceGetStatusResponse{Interface: iface, State: strings.TrimSpace(string(state))}
+	if enabled, available := p.rfkillState(ctx); available {
+		status.RadioEnabled = enabled
+		status.RadioStateAvailable = true
+	}
 	if p.LookPath != nil {
 		if look(p.LookPath, "nmcli") {
 			status.Manager = "NetworkManager"

@@ -28,8 +28,16 @@ Estado de las funcionalidades de NEXUS. La marca `[x]` indica implementación y 
 - [x] Escanear redes con `iw`; el escaneo respondió en la R36S con permisos limitados a `nexusd`.
 - [x] Ordenar resultados por señal y SSID, e identificar la red actual por BSSID.
 - [x] Cache en memoria de resultados durante 15 segundos; `--refresh` solicita un escaneo nuevo.
-- [ ] Conectar y desconectar redes mediante el gestor disponible en Armbian, con manejo seguro de credenciales.
-- [ ] Validar de nuevo el indicador `CURRENT` tras un escaneo fresco en la consola.
+- [x] Activar/desactivar el radio mediante `rfkill` y reportar cuándo el estado no se puede detectar.
+- [x] Conectar y guardar perfiles abiertos y WPA-PSK mediante el socket de control de `wpa_supplicant`.
+- [x] Conservar perfiles en archivo privado `0600`, no devolver contraseñas por RPC y restaurarlos al iniciar `nexusd`.
+- [x] Ordenar perfiles guardados, conectar a uno guardado, seleccionar preferida y olvidar redes.
+- [x] Desplegar en la R36S `nexusd` y la UI con Ansible; ambos servicios quedaron activos.
+- [x] Confirmar en la R36S estado Wi-Fi conectado, radio disponible/encendida y respuesta correcta a `wifi radio on`.
+- [x] Confirmar respuesta `PONG` del socket WPA al ejecutarlo como `r36s` en el grupo `netdev`.
+- [x] Ejecutar un escaneo fresco en la consola y confirmar que `CURRENT` identifica `Dpto1401`.
+- [ ] Probar apagar y volver a encender el radio desde la pantalla, con observación física y recuperación local disponible.
+- [ ] Añadir y conectar un perfil WPA desde la UI; comprobar reconexión, preferencia y olvido de redes.
 
 ## Hardware
 
@@ -83,5 +91,6 @@ Estado de las funcionalidades de NEXUS. La marca `[x]` indica implementación y 
 - La UI se compiló desde una configuración limpia y se renderizó en SDL a 640×480 sin daemon y conectada al daemon real de la R36S mediante un túnel SSH al socket UDS.
 - La respuesta de escaneo vacía se representó en su estado dedicado; la lista Wi-Fi se comprobó con error, resultados reales y caché.
 - Prueba en R36S (2026-10-25): la UI consultó y mostró estado Wi-Fi, redes detectadas, red actual, señal y seguridad; una segunda consulta confirmó resultados en caché. También mostró batería/carga, temperatura, sistema, brillo y volumen.
+- Despliegue Wi-Fi en R36S (2026-10-26): se compilaron y desplegaron `nexusd`, `nexusctl` y la UI ARM64. Ansible instaló `rfkill`, añadió el grupo `netdev` al daemon y aplicó una regla udev para `/dev/rfkill`. El RPC de salud respondió `serving`; la UI y `nexusd` quedaron activos. `nexusctl wifi status` informó `wlan0`, conexión a `Dpto1401`, radio disponible y encendida; `wifi radio on` respondió correctamente, el socket WPA devolvió `PONG` para el usuario `r36s` en `netdev` y un escaneo fresco volvió a marcar la red actual. No se probó apagar el radio ni conectar una red nueva para conservar la conexión SSH.
 - Prueba de ajustes en R36S (2026-10-25): la UI solicitó brillo 99 % y volumen 79 %, recibió confirmación y restauró brillo 100 % y volumen 80 %. La lectura final de `nexusctl hardware status` confirmó ambos valores.
 - Prueba SDL temporal en R36S (2026-10-25): sin instalar paquetes, se extrajo SDL 2.26.5 y sus dependencias en `/tmp`; SDL enumeró `adc-joystick` (0 botones) y `gpio-keys` (19 botones). Una captura registró en orden las pulsaciones ↑=8, ↓=9, ←=10, →=11, A=0 y B=1; el orden izquierdo/derecho de SDL difiere del mapa de `/dev/input/js0`. Se retiraron los archivos temporales. La prueba del movimiento visual dentro de `nexus-ui` se reserva para la integración Armbian de la fase 8.

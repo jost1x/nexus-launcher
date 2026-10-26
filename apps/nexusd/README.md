@@ -24,6 +24,11 @@ nexusctl system capabilities
 nexusctl wifi status
 nexusctl wifi scan [INTERFACE]
 nexusctl wifi scan --refresh [INTERFACE]
+nexusctl wifi radio on|off
+nexusctl wifi saved
+nexusctl wifi connect-saved ID
+nexusctl wifi prefer ID
+nexusctl wifi forget ID
 nexusctl --format json wifi scan
 nexusctl wifi scan
 nexusctl hardware status
@@ -32,7 +37,15 @@ nexusctl --confirm hardware volume set PERCENT
 nexusctl --confirm hardware reboot|poweroff
 ```
 
-`health` acepta `nexus.v1.SystemService`, `nexus.v1.WifiService` y `nexus.v1.HardwareService`, además de la salud global sin argumento. Los errores RPC incluyen el código y el contexto de la operación. Las escrituras de brillo, volumen y energía requieren `--confirm`; la CLI y el daemon validan rangos y capacidades antes de actuar. No se guarda información de red ni se vuelcan secretos en logs.
+`health` acepta `nexus.v1.SystemService`, `nexus.v1.WifiService` y `nexus.v1.HardwareService`, además de la salud global sin argumento. Los errores RPC incluyen el código y el contexto de la operación. Las escrituras de brillo, volumen y energía requieren `--confirm`; la CLI y el daemon validan rangos y capacidades antes de actuar. La contraseña de una red nueva se solicita en la UI; no se imprime en respuestas RPC ni en logs.
+
+### Wi-Fi
+
+El estado del radio se consulta con `rfkill`; la UI desactiva el control si el sistema no informa ese estado. El daemon conecta redes mediante el socket de control de `wpa_supplicant`, compatible con el backend Netplan/systemd-networkd de la imagen R36S. Para acceder al socket de control y a `/dev/rfkill`, la unidad desplegada incluye el grupo `netdev`. Si falta `rfkill`, la interfaz no tiene socket WPA accesible o los permisos no bastan, la operación devuelve un error RPC y el estado no se presenta como cambiado.
+
+Las redes agregadas desde la UI se guardan por orden de preferencia en `$XDG_CACHE_HOME/nexusd/wifi-profiles.json` (o `~/.cache/nexusd/wifi-profiles.json`), dentro de un directorio `0700` y un archivo `0600`. Las credenciales quedan en texto claro dentro de ese archivo, accesible solo a la cuenta que ejecuta `nexusd`; no se copian a respuestas, argumentos de procesos ni logs. La red que se conecta o marca como preferida pasa al primer lugar y se vuelve a instalar en `wpa_supplicant` al iniciar el daemon. Los perfiles siguientes quedan disponibles como respaldo. Se admiten redes abiertas y WPA-PSK; Enterprise y autenticación WPA3-SAE aún no están implementados.
+
+La configuración inicial creada por Netplan continúa intacta. No se importa su contraseña a la lista de NEXUS; para administrar esa red desde la UI, el usuario debe seleccionarla y registrarla ahí.
 
 En la R36S, `nexusd` escucha los botones del dispositivo Linux `gpio-keys`. `Vol+` y `Vol−` cambian el volumen ALSA en 5 puntos porcentuales; `F + Vol+` y `F + Vol−` cambian el brillo en el mismo paso. Mantener una tecla usa la repetición de eventos del kernel. La captura en hardware identificó el botón F como código 708 (`BTN_TRIGGER_HAPPY5`); el DTS candidato nombra esa entrada F5. La unidad systemd pertenece al grupo `input`; Ansible ajusta el permiso del atributo de backlight para que ese grupo pueda escribirlo. La CLI también permite cambiar ambos valores con `--confirm`.
 
@@ -66,7 +79,7 @@ Durante el prototipo se compila y despliega `nexusd` y `nexusctl` en la R36S med
 
 1. **Base:** proceso, UDS, gRPC Health, logging, cierre ordenado y CLI. Validado localmente y desplegado por Ansible en la R36S.
 2. **Sistema y capacidades:** información Linux desde `os-release`/`procfs`; capacidades detectadas desde sysfs y herramientas disponibles, con indicador de detección observada en R36S.
-3. **Wi-Fi:** estado de interfaz, SSID asociado y escaneo cancelable con `iw`, con errores claros cuando falten herramienta, interfaz o permisos. La consola ya tiene `iw` v5.19 en `/usr/sbin`; `nexusd` busca también en las rutas estándar de `sbin`, aunque no estén en el `PATH` del proceso. El escaneo necesita permiso de administración de red. La conexión/desconexión de redes queda supeditada a un mecanismo de Armbian que permita tratar las credenciales de forma segura.
+3. **Wi-Fi:** estado del radio, redes guardadas, conexión y preferencia por medio de `wpa_supplicant`, interruptor con `rfkill` y escaneo cancelable con `iw`. La consola ya tiene `iw` v5.19 en `/usr/sbin`; `nexusd` busca también en las rutas estándar de `sbin`, aunque no estén en el `PATH` del proceso. El acceso al control WPA y al radio depende de los permisos del sistema y se informa como no disponible cuando no se cumplen.
 4. **Hardware:** lecturas de batería, estado de carga/cargador, temperatura, backlight y ALSA; controles de brillo y volumen con confirmación; reinicio/apagado explícitos y confirmados.
 5. Completar pruebas del daemon y la CLI por SSH en la R36S. La integración persistente, empaquetado e inicio en la imagen Armbian pertenecen a la Fase 8 del proyecto.
 
@@ -74,4 +87,8 @@ No asumir NetworkManager, rutas sysfs, controles ALSA ni permisos root. Usar `r3
 
 ### Observaciones en la consola
 
-En una consulta SSH del 2026-10-24, `/proc/device-tree/model` identificó `R36S (Panel 4 software profile)` y `/etc/os-release` informó Debian 12 con kernel `6.18.58-current-rockchip64`. `nexusctl health` y la salud de los tres servicios, además de `system info`, `system capabilities`, `wifi status` y `hardware status`, respondieron por UDS en la consola. `wlan0` está routable según `systemd-networkd`. `iw` v5.19 está instalado en `/usr/sbin`; `nexusd` busca esta ruta aunque no esté en el `PATH`. Ansible instaló y activó `nexusd.service` con `CAP_NET_ADMIN`; el proceso corre como `r36s`, con esa capacidad efectiva. Tras aumentar el timeout predeterminado de la CLI a 15 segundos, `nexusctl wifi scan` completó por UDS. La tabla marca la red actual usando el BSSID. El parser se corrigió para quitar el sufijo `(on wlan0)`; el binario actualizado está copiado en la consola, pendiente reiniciar `nexusd` para validar la marca. Las lecturas observadas incluyeron batería al 100 %, temperatura SoC alrededor de 53 °C, brillo 833/1666 y volumen ALSA 79 %. `--confirm hardware volume set 79` respondió correctamente y mantuvo la lectura en 79 %. La consola expone `gpio-keys` como `/dev/input/event0`; el mapeo real de botones a eventos físicos todavía requiere validación manual. El cambio de brillo al 50 % fue rechazado por permisos de sysfs. No se ejecutaron reboot/poweroff.
+En una consulta SSH del 2026-10-24, `/proc/device-tree/model` identificó `R36S (Panel 4 software profile)` y `/etc/os-release` informó Debian 12 con kernel `6.18.58-current-rockchip64`. `nexusctl health` y la salud de los tres servicios, además de `system info`, `system capabilities`, `wifi status` y `hardware status`, respondieron por UDS en la consola. `wlan0` está routable según `systemd-networkd`. `iw` v5.19 está instalado en `/usr/sbin`; `nexusd` busca esta ruta aunque no esté en el `PATH`. Ansible instaló y activó `nexusd.service` con `CAP_NET_ADMIN`; el proceso corre como `r36s`, con esa capacidad efectiva. Tras aumentar el timeout predeterminado de la CLI a 15 segundos, `nexusctl wifi scan` completó por UDS. El parser se corrigió para quitar el sufijo `(on wlan0)`; el daemon actualizado y reiniciado confirmó después la red actual por BSSID.
+
+Despliegue Wi-Fi del 2026-10-26: Ansible instaló `rfkill`, asignó el acceso a `/dev/rfkill` al grupo `netdev` y configuró ese grupo en `nexusd.service`. La radio se detecta encendida, `wifi radio on` responde correctamente y un escaneo fresco marca la red actual. El socket `/run/wpa_supplicant/wlan0` respondió `PONG` al usuario del daemon con el grupo `netdev`. La UI y `nexusd` quedaron activos en la consola. Aún no se probó apagar la radio ni crear/conectar otro perfil desde la UI.
+
+Las lecturas observadas incluyeron batería al 100 %, temperatura SoC alrededor de 53 °C, brillo 833/1666 y volumen ALSA 79 %. `--confirm hardware volume set 79` respondió correctamente y mantuvo la lectura en 79 %. La consola expone `gpio-keys` como `/dev/input/event0`; el mapeo real de botones a eventos físicos todavía requiere validación manual. El cambio de brillo al 50 % fue rechazado por permisos de sysfs. No se ejecutaron reboot/poweroff.

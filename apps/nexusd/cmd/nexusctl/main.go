@@ -152,6 +152,48 @@ func run() error {
 				return left.Ssid < right.Ssid
 			})
 			return printOutput(*outputFormat, result)
+		case "radio":
+			if len(args) != 3 || (args[2] != "on" && args[2] != "off") {
+				return usageError()
+			}
+			result, err := client.SetEnabled(ctx, &nexusv1.WifiServiceSetEnabledRequest{Enabled: args[2] == "on"})
+			if err != nil {
+				return rpcError("change Wi-Fi radio state", err)
+			}
+			return printOutput(*outputFormat, result)
+		case "saved":
+			if len(args) != 2 {
+				return usageError()
+			}
+			result, err := client.ListSavedNetworks(ctx, &nexusv1.WifiServiceListSavedNetworksRequest{})
+			if err != nil {
+				return rpcError("list saved Wi-Fi networks", err)
+			}
+			return printOutput(*outputFormat, result)
+		case "connect-saved", "prefer", "forget":
+			if len(args) != 3 || args[2] == "" {
+				return usageError()
+			}
+			switch args[1] {
+			case "connect-saved":
+				result, err := client.ConnectSavedNetwork(ctx, &nexusv1.WifiServiceConnectSavedNetworkRequest{Id: args[2]})
+				if err != nil {
+					return rpcError("connect to saved Wi-Fi network", err)
+				}
+				return printOutput(*outputFormat, result)
+			case "prefer":
+				result, err := client.SetPreferredNetwork(ctx, &nexusv1.WifiServiceSetPreferredNetworkRequest{Id: args[2]})
+				if err != nil {
+					return rpcError("set preferred Wi-Fi network", err)
+				}
+				return printOutput(*outputFormat, result)
+			default:
+				result, err := client.ForgetNetwork(ctx, &nexusv1.WifiServiceForgetNetworkRequest{Id: args[2]})
+				if err != nil {
+					return rpcError("forget Wi-Fi network", err)
+				}
+				return printOutput(*outputFormat, result)
+			}
 		default:
 			return usageError()
 		}
@@ -340,7 +382,41 @@ func printOutput(format string, value any) error {
 			[2]string{"BSSID", result.Bssid},
 			[2]string{"MANAGER", result.Manager},
 			[2]string{"DETAIL", result.Detail},
+			[2]string{"RADIO ENABLED", strconv.FormatBool(result.RadioEnabled)},
+			[2]string{"RADIO STATE AVAILABLE", strconv.FormatBool(result.RadioStateAvailable)},
 		)
+	case *nexusv1.WifiServiceSetEnabledResponse:
+		return writeKeyValues(
+			[2]string{"RADIO ENABLED", strconv.FormatBool(result.Enabled)},
+			[2]string{"RADIO STATE AVAILABLE", strconv.FormatBool(result.RadioStateAvailable)},
+		)
+	case *nexusv1.WifiServiceConnectResponse:
+		return writeKeyValues(
+			[2]string{"STATE", result.State},
+			[2]string{"CONNECTED", strconv.FormatBool(result.Connected)},
+			[2]string{"SSID", result.Ssid},
+		)
+	case *nexusv1.WifiServiceConnectSavedNetworkResponse:
+		return writeKeyValues(
+			[2]string{"STATE", result.State},
+			[2]string{"CONNECTED", strconv.FormatBool(result.Connected)},
+			[2]string{"SSID", result.Ssid},
+		)
+	case *nexusv1.WifiServiceListSavedNetworksResponse:
+		if _, err := fmt.Fprintln(writer, "PREFERRED\tCONNECTED\tSSID\tSECURITY\tID"); err != nil {
+			return err
+		}
+		for _, network := range result.Networks {
+			if _, err := fmt.Fprintf(writer, "%t\t%t\t%s\t%s\t%s\n", network.Preferred, network.Connected,
+				cleanCell(network.Ssid), cleanCell(network.Security), cleanCell(network.Id)); err != nil {
+				return err
+			}
+		}
+		return writer.Flush()
+	case *nexusv1.WifiServiceSetPreferredNetworkResponse:
+		return printSavedWifiNetworks(writer, result.Networks)
+	case *nexusv1.WifiServiceForgetNetworkResponse:
+		return printSavedWifiNetworks(writer, result.Networks)
 	case *nexusv1.ScanResponse:
 		scanAge := time.Since(time.Unix(result.ScannedAtUnix, 0))
 		if scanAge < 0 {
@@ -419,6 +495,19 @@ func cleanCell(value string) string {
 	return strings.NewReplacer("\t", " ", "\n", " ", "\r", " ").Replace(value)
 }
 
+func printSavedWifiNetworks(writer *tabwriter.Writer, networks []*nexusv1.SavedWifiNetwork) error {
+	if _, err := fmt.Fprintln(writer, "PREFERRED\tCONNECTED\tSSID\tSECURITY\tID"); err != nil {
+		return err
+	}
+	for _, network := range networks {
+		if _, err := fmt.Fprintf(writer, "%t\t%t\t%s\t%s\t%s\n", network.Preferred, network.Connected,
+			cleanCell(network.Ssid), cleanCell(network.Security), cleanCell(network.Id)); err != nil {
+			return err
+		}
+	}
+	return writer.Flush()
+}
+
 func rpcError(operation string, err error) error {
 	if rpcErr, ok := err.(*connect.Error); ok {
 		return fmt.Errorf("%s: %s (%s)", operation, rpcErr.Message(), rpcErr.Code())
@@ -427,5 +516,5 @@ func rpcError(operation string, err error) error {
 }
 
 func usageError() error {
-	return fmt.Errorf("usage: nexusctl [--socket PATH] [--timeout DURATION] [--format json|table] [--confirm] COMMAND\n  health [SERVICE]\n  system info|capabilities\n  wifi status|scan [INTERFACE] [--refresh]\n  hardware status|brightness set PERCENT|volume set PERCENT|reboot|poweroff\nWi-Fi scan uses cached results for 15 seconds unless --refresh is given; results sort by signal strength (descending), then SSID.\n--confirm is required for brightness, volume, reboot, and poweroff operations")
+	return fmt.Errorf("usage: nexusctl [--socket PATH] [--timeout DURATION] [--format json|table] [--confirm] COMMAND\n  health [SERVICE]\n  system info|capabilities\n  wifi status|scan [INTERFACE] [--refresh]|radio on|off|saved|connect-saved ID|prefer ID|forget ID\n  hardware status|brightness set PERCENT|volume set PERCENT|reboot|poweroff\nWi-Fi scan uses cached results for 15 seconds unless --refresh is given; results sort by signal strength (descending), then SSID.\n--confirm is required for brightness, volume, reboot, and poweroff operations")
 }

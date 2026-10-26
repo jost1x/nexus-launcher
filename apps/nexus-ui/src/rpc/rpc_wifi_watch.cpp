@@ -15,9 +15,9 @@ void RpcClient::run_wifi_watch(uint64_t id) {
             wifi_watch_context_ = context;
         }
 
-        nexus::v1::WifiServiceGetStatusRequest request;
+        nexus::v1::WifiServiceWatchStatusRequest request;
         auto reader = wifi_stub_->WatchStatus(context.get(), request);
-        nexus::v1::WifiServiceGetStatusResponse response;
+        nexus::v1::WifiServiceWatchStatusResponse response;
         while (reader->Read(&response)) {
             RpcResult update;
             update.id = id;

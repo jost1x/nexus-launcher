@@ -36,7 +36,61 @@ message WifiServiceGetStatusResponse {
   string manager = 5;
   string detail = 6;
   string bssid = 7;
+  bool radio_enabled = 8;
+  bool radio_state_available = 9;
 }
+message WifiServiceWatchStatusRequest {}
+message WifiServiceWatchStatusResponse {
+  string interface = 1;
+  string state = 2;
+  bool connected = 3;
+  string ssid = 4;
+  string manager = 5;
+  string detail = 6;
+  string bssid = 7;
+  bool radio_enabled = 8;
+  bool radio_state_available = 9;
+}
+message WifiServiceSetEnabledRequest { bool enabled = 1; }
+message WifiServiceSetEnabledResponse {
+  bool enabled = 1;
+  bool radio_state_available = 2;
+}
+
+message WifiServiceConnectRequest {
+  string ssid = 1;
+  string password = 2;
+  string security = 3;
+}
+message WifiServiceConnectResponse {
+  string state = 1;
+  bool connected = 2;
+  string ssid = 3;
+}
+
+message WifiServiceConnectSavedNetworkRequest { string id = 1; }
+message WifiServiceConnectSavedNetworkResponse {
+  string state = 1;
+  bool connected = 2;
+  string ssid = 3;
+}
+
+message WifiServiceListSavedNetworksRequest {}
+message SavedWifiNetwork {
+  string id = 1;
+  string ssid = 2;
+  string security = 3;
+  bool connected = 4;
+  bool preferred = 5;
+  int32 priority = 6;
+}
+message WifiServiceListSavedNetworksResponse { repeated SavedWifiNetwork networks = 1; }
+
+message WifiServiceSetPreferredNetworkRequest { string id = 1; }
+message WifiServiceSetPreferredNetworkResponse { repeated SavedWifiNetwork networks = 1; }
+
+message WifiServiceForgetNetworkRequest { string id = 1; }
+message WifiServiceForgetNetworkResponse { repeated SavedWifiNetwork networks = 1; }
 
 message ScanRequest {
   string interface = 1;
@@ -74,7 +128,25 @@ message HardwareServiceGetStatusResponse {
   bool charger_connected = 15;
   bool battery_charging = 16;
 }
-
+message HardwareServiceWatchStatusRequest {}
+message HardwareServiceWatchStatusResponse {
+  bool battery_available = 1;
+  string battery_status = 2;
+  int32 battery_percent = 3;
+  int64 battery_voltage_microvolts = 4;
+  bool thermal_available = 5;
+  double soc_temperature_celsius = 6;
+  bool brightness_available = 7;
+  int64 brightness = 8;
+  int64 brightness_max = 9;
+  bool audio_available = 10;
+  string audio_detail = 11;
+  bool volume_available = 12;
+  int32 volume_percent = 13;
+  bool charger_available = 14;
+  bool charger_connected = 15;
+  bool battery_charging = 16;
+}
 message SetVolumeRequest {
   int32 percent = 1;
   bool confirmed = 2;
@@ -106,14 +178,20 @@ service SystemService {
 service WifiService {
   rpc GetStatus(WifiServiceGetStatusRequest) returns (WifiServiceGetStatusResponse);
   // Sends an initial snapshot and subsequent updates when Wi-Fi state changes.
-  rpc WatchStatus(WifiServiceGetStatusRequest) returns (stream WifiServiceGetStatusResponse);
+  rpc WatchStatus(WifiServiceWatchStatusRequest) returns (stream WifiServiceWatchStatusResponse);
   rpc Scan(ScanRequest) returns (ScanResponse);
+  rpc SetEnabled(WifiServiceSetEnabledRequest) returns (WifiServiceSetEnabledResponse);
+  rpc Connect(WifiServiceConnectRequest) returns (WifiServiceConnectResponse);
+  rpc ConnectSavedNetwork(WifiServiceConnectSavedNetworkRequest) returns (WifiServiceConnectSavedNetworkResponse);
+  rpc ListSavedNetworks(WifiServiceListSavedNetworksRequest) returns (WifiServiceListSavedNetworksResponse);
+  rpc SetPreferredNetwork(WifiServiceSetPreferredNetworkRequest) returns (WifiServiceSetPreferredNetworkResponse);
+  rpc ForgetNetwork(WifiServiceForgetNetworkRequest) returns (WifiServiceForgetNetworkResponse);
 }
 
 service HardwareService {
   rpc GetStatus(HardwareServiceGetStatusRequest) returns (HardwareServiceGetStatusResponse);
   // Sends an initial snapshot and subsequent updates when hardware state changes.
-  rpc WatchStatus(HardwareServiceGetStatusRequest) returns (stream HardwareServiceGetStatusResponse);
+  rpc WatchStatus(HardwareServiceWatchStatusRequest) returns (stream HardwareServiceWatchStatusResponse);
   rpc SetBrightness(SetBrightnessRequest) returns (SetBrightnessResponse);
   rpc SetVolume(SetVolumeRequest) returns (SetVolumeResponse);
   rpc PowerAction(PowerActionRequest) returns (PowerActionResponse);

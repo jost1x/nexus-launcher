@@ -41,7 +41,12 @@ void UiController::navigate_to(View view, bool remember_current) {
         if (wifi_scan_id_ == 0) {
             state_.wifi_scan_error.clear();
             state_.wifi_scan_loading = true;
-            wifi_scan_id_ = rpc_.scan_wifi(false);
+            wifi_scan_id_ = rpc_.scan_wifi(true);
+        }
+        if (wifi_saved_id_ == 0 && !state_.saved_wifi_networks) {
+            state_.wifi_saved_error.clear();
+            state_.wifi_saved_loading = true;
+            wifi_saved_id_ = rpc_.list_saved_wifi_networks();
         }
     } else if (view == View::Display || view == View::Audio || view == View::System) {
         if (hardware_watch_id_ == 0 && hardware_id_ == 0) {
@@ -117,6 +122,61 @@ void UiController::dispatch(Action action) {
             wifi_scan_id_ = rpc_.scan_wifi(true);
             render();
             return;
+        case Action::ToggleWifi:
+            if (wifi_set_enabled_id_ != 0) return;
+            if (!state_.wifi_status || !state_.wifi_status->radio_state_available()) {
+                state_.wifi_action_message = "El control de radio Wi-Fi no está disponible.";
+                render();
+                return;
+            }
+            // A scan can occupy the RPC worker for up to 20 seconds. Stop it
+            // before disabling the radio so the toggle is handled immediately.
+            if (state_.wifi_status->radio_enabled() && wifi_scan_id_ != 0) {
+                rpc_.cancel(wifi_scan_id_);
+                wifi_scan_id_ = 0;
+                state_.wifi_scan_loading = false;
+            }
+            state_.wifi_action_message = state_.wifi_status->radio_enabled() ? "Desactivando Wi-Fi..." : "Activando Wi-Fi...";
+            wifi_set_enabled_id_ = rpc_.set_wifi_enabled(!state_.wifi_status->radio_enabled());
+            render();
+            return;
+        case Action::RefreshSavedWifiNetworks:
+            if (wifi_saved_id_ != 0) return;
+            state_.wifi_saved_error.clear();
+            state_.wifi_saved_loading = true;
+            wifi_saved_id_ = rpc_.list_saved_wifi_networks();
+            render();
+            return;
+        case Action::SubmitWifiPassword:
+            if (wifi_connect_id_ != 0 || state_.wifi_connect_ssid.empty()) return;
+            if (state_.wifi_connect_security != "open" && state_.wifi_password.size() < 8) {
+                state_.wifi_action_message = "La contraseña debe tener al menos 8 caracteres.";
+                render();
+                return;
+            }
+            state_.wifi_action_message = "Conectando y guardando la red...";
+            state_.wifi_saved_error.clear();
+            wifi_connect_id_ = rpc_.connect_wifi(state_.wifi_connect_ssid, state_.wifi_password,
+                                                 state_.wifi_connect_security);
+            std::fill(state_.wifi_password.begin(), state_.wifi_password.end(), '\0');
+            state_.wifi_password.clear();
+            state_.wifi_connect_ssid.clear();
+            state_.wifi_connect_security.clear();
+            render();
+            return;
+        case Action::CancelWifiPassword:
+            state_.wifi_connect_ssid.clear();
+            state_.wifi_connect_security.clear();
+            std::fill(state_.wifi_password.begin(), state_.wifi_password.end(), '\0');
+            state_.wifi_password.clear();
+            state_.wifi_action_message.clear();
+            render();
+            return;
+        case Action::ConnectWifiNetwork:
+        case Action::ConnectSavedWifiNetwork:
+        case Action::SetPreferredWifiNetwork:
+        case Action::ForgetWifiNetwork:
+            return;
         case Action::ApplyBrightness:
             if (brightness_id_ != 0 || !state_.hardware || !state_.hardware->brightness_available()) return;
             if (state_.brightness_target < 0) {
@@ -135,6 +195,43 @@ void UiController::dispatch(Action action) {
             state_.hardware_error.clear();
             volume_id_ = rpc_.set_volume(state_.volume_target);
             render();
+            return;
+    }
+}
+
+void UiController::dispatch_wifi_action(const WifiActionContext& context) {
+    switch (context.action) {
+        case Action::ConnectWifiNetwork:
+            state_.wifi_connect_ssid = context.ssid;
+            state_.wifi_connect_security = context.security.empty() ? "open" : context.security;
+            state_.wifi_password.clear();
+            if (state_.wifi_connect_security == "open") {
+                state_.wifi_action_message.clear();
+                dispatch(Action::SubmitWifiPassword);
+            } else {
+                state_.wifi_action_message.clear();
+                render();
+            }
+            return;
+        case Action::ConnectSavedWifiNetwork:
+            if (wifi_connect_saved_id_ != 0) return;
+            state_.wifi_action_message = "Conectando a la red guardada...";
+            wifi_connect_saved_id_ = rpc_.connect_saved_wifi_network(context.id);
+            render();
+            return;
+        case Action::SetPreferredWifiNetwork:
+            if (wifi_preferred_id_ != 0) return;
+            state_.wifi_action_message = "Guardando la red preferida...";
+            wifi_preferred_id_ = rpc_.set_preferred_wifi_network(context.id);
+            render();
+            return;
+        case Action::ForgetWifiNetwork:
+            if (wifi_forget_id_ != 0) return;
+            state_.wifi_action_message = "Olvidando la red...";
+            wifi_forget_id_ = rpc_.forget_wifi_network(context.id);
+            render();
+            return;
+        default:
             return;
     }
 }

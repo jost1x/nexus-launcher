@@ -15,9 +15,9 @@ void RpcClient::run_hardware_watch(uint64_t id) {
             watch_context_ = context;
         }
 
-        nexus::v1::HardwareServiceGetStatusRequest request;
+        nexus::v1::HardwareServiceWatchStatusRequest request;
         auto reader = hardware_stub_->WatchStatus(context.get(), request);
-        nexus::v1::HardwareServiceGetStatusResponse response;
+        nexus::v1::HardwareServiceWatchStatusResponse response;
         while (reader->Read(&response)) {
             RpcResult update;
             update.id = id;

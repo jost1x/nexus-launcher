@@ -19,9 +19,12 @@ UiController::UiController(RpcClient& rpc) : rpc_(rpc), focus_group_(lv_group_cr
 UiController::~UiController() {
     stopped_ = true;
     if (refresh_timer_ != nullptr) lv_timer_delete(refresh_timer_);
-    for (const auto id : {wifi_status_id_, wifi_watch_id_, wifi_scan_id_, hardware_id_, hardware_watch_id_, system_id_, brightness_id_, volume_id_}) {
+    for (const auto id : {wifi_status_id_, wifi_watch_id_, wifi_scan_id_, wifi_saved_id_, wifi_set_enabled_id_,
+                          wifi_connect_id_, wifi_connect_saved_id_, wifi_preferred_id_, wifi_forget_id_,
+                          hardware_id_, hardware_watch_id_, system_id_, brightness_id_, volume_id_}) {
         if (id != 0) rpc_.cancel(id);
     }
+    std::fill(state_.wifi_password.begin(), state_.wifi_password.end(), '\0');
     if (root_ != nullptr) lv_obj_delete(root_);
     if (focus_group_ != nullptr) lv_group_delete(focus_group_);
     if (active_ == this) active_ = nullptr;

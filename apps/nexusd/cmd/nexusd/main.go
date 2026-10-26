@@ -65,6 +65,7 @@ func run() error {
 	go hardwareWatcher.MonitorHardwareStatus(ctx, adapter, 2*time.Second)
 	wifiWatcher := services.NewWifiStatusHub()
 	go wifiWatcher.MonitorWifiStatus(ctx, adapter, 2*time.Second)
+	go adapter.MonitorWifiProfiles(ctx, 5*time.Second)
 	go func() {
 		if err := adapter.WatchVolumeKeys(ctx, hardwareWatcher.Notify); err != nil {
 			slog.Warn("physical volume controls are unavailable", "error", err)

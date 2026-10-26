@@ -25,6 +25,9 @@ public:
     static void action_event(lv_event_t* event);
     static void key_event(lv_event_t* event);
     static void slider_event(lv_event_t* event);
+    static void wifi_action_event(lv_event_t* event);
+    static void wifi_action_delete_event(lv_event_t* event);
+    static void wifi_password_ready_event(lv_event_t* event);
 
 private:
     struct NavigationEntry {
@@ -36,11 +39,13 @@ private:
     void navigate_to(View view, bool remember_current);
     void navigate_back();
     void cycle_section(int direction);
+    void dispatch_wifi_action(const WifiActionContext& context);
     void render();
     void request_overview();
     void collect_results();
     void update_header();
     static void dispatch_action_async(void* user_data);
+    static void dispatch_wifi_action_async(void* user_data);
     static void navigate_back_async(void* user_data);
     static void cycle_section_async(void* user_data);
     static void timer_event(lv_timer_t* timer);
@@ -63,6 +68,12 @@ private:
     uint64_t wifi_status_id_ = 0;
     uint64_t wifi_watch_id_ = 0;
     uint64_t wifi_scan_id_ = 0;
+    uint64_t wifi_saved_id_ = 0;
+    uint64_t wifi_set_enabled_id_ = 0;
+    uint64_t wifi_connect_id_ = 0;
+    uint64_t wifi_connect_saved_id_ = 0;
+    uint64_t wifi_preferred_id_ = 0;
+    uint64_t wifi_forget_id_ = 0;
     uint64_t hardware_id_ = 0;
     uint64_t hardware_watch_id_ = 0;
     uint64_t system_id_ = 0;

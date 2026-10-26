@@ -1,8 +1,10 @@
 #include "ui/ui.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <climits>
+#include <memory>
 
 namespace nexus {
 namespace {
@@ -58,6 +60,33 @@ void UiController::dispatch_action_async(void* user_data) {
     active_->dispatch(action);
 }
 
+void UiController::dispatch_wifi_action_async(void* user_data) {
+    std::unique_ptr<WifiActionContext> context(static_cast<WifiActionContext*>(user_data));
+    if (active_ == nullptr || active_->stopped_ || !context) return;
+    active_->dispatch_wifi_action(*context);
+}
+
+void UiController::wifi_action_event(lv_event_t* event) {
+    if (active_ == nullptr || active_->stopped_) return;
+    const auto* context = static_cast<const WifiActionContext*>(lv_event_get_user_data(event));
+    if (context == nullptr) return;
+    lv_async_call(dispatch_wifi_action_async, new WifiActionContext(*context));
+}
+
+void UiController::wifi_action_delete_event(lv_event_t* event) {
+    delete static_cast<WifiActionContext*>(lv_event_get_user_data(event));
+}
+
+void UiController::wifi_password_ready_event(lv_event_t* event) {
+    if (active_ == nullptr || active_->stopped_) return;
+    auto* keyboard = static_cast<lv_obj_t*>(lv_event_get_target(event));
+    auto* textarea = lv_keyboard_get_textarea(keyboard);
+    if (textarea == nullptr) return;
+    active_->state_.wifi_password = lv_textarea_get_text(textarea);
+    lv_async_call(dispatch_action_async,
+                  reinterpret_cast<void*>(static_cast<std::uintptr_t>(Action::SubmitWifiPassword)));
+}
+
 void UiController::navigate_back_async(void* user_data) {
     auto* controller = static_cast<UiController*>(user_data);
     if (controller == nullptr || controller != active_ || controller->stopped_) return;
@@ -74,6 +103,15 @@ void UiController::key_event(lv_event_t* event) {
     if (active_ == nullptr) return;
     const uint32_t key = lv_event_get_key(event);
     if (key == LV_KEY_ESC) {
+        if (!active_->state_.wifi_connect_ssid.empty()) {
+            active_->state_.wifi_connect_ssid.clear();
+            active_->state_.wifi_connect_security.clear();
+            std::fill(active_->state_.wifi_password.begin(), active_->state_.wifi_password.end(), '\0');
+            active_->state_.wifi_password.clear();
+            active_->render();
+            lv_event_stop_bubbling(event);
+            return;
+        }
         lv_async_call(navigate_back_async, active_);
         return;
     }

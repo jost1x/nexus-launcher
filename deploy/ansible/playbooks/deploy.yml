@@ -14,6 +14,7 @@
     nexus_service_name: nexusd
     nexus_service_unit: /etc/systemd/system/nexusd.service
     nexus_backlight_rule: /etc/udev/rules.d/90-nexus-backlight.rules
+    nexus_rfkill_rule: /etc/udev/rules.d/80-nexus-rfkill.rules
     nexus_power_polkit_rule: /etc/polkit-1/rules.d/60-nexus-power.rules
     nexus_backlight_group: nexusd-backlight
 
@@ -53,6 +54,7 @@
       loop:
         - input
         - audio
+        - netdev
         - "{{ nexus_backlight_group }}"
 
     - name: Install polkit for passwordless logind power actions
@@ -60,6 +62,34 @@
       ansible.builtin.package:
         name: polkitd
         state: present
+
+    - name: Install rfkill for Wi-Fi radio control
+      become: true
+      ansible.builtin.package:
+        name: rfkill
+        state: present
+
+    - name: Allow the netdev group to access the rfkill device
+      become: true
+      ansible.builtin.copy:
+        dest: "{{ nexus_rfkill_rule }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          KERNEL=="rfkill", GROUP="netdev", MODE="0660"
+      register: nexus_rfkill_rule_copy
+
+    - name: Apply the rfkill device access rule
+      become: true
+      ansible.builtin.command:
+        argv:
+          - udevadm
+          - trigger
+          - --subsystem-match=misc
+          - --sysname-match=rfkill
+      when: nexus_rfkill_rule_copy.changed
+      changed_when: true
 
     - name: Ensure systemd-logind is running
       become: true
@@ -199,7 +229,7 @@
           Type=simple
           User={{ ansible_facts.user_id }}
           Group={{ ansible_facts.user_gid }}
-          SupplementaryGroups=input audio {{ nexus_backlight_group }}
+          SupplementaryGroups=input audio netdev {{ nexus_backlight_group }}
           Environment=HOME={{ ansible_facts.user_dir }}
           Environment=XDG_CACHE_HOME={{ ansible_facts.user_dir }}/.cache
           ExecStart={{ nexus_remote_bin_dir }}/nexusd --socket {{ nexus_socket }}
