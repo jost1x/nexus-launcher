@@ -123,7 +123,8 @@
     - name: Decide whether the UI needs a restart
       ansible.builtin.set_fact:
         nexus_ui_restart_required: >-
-          {{ (nexus_ui_binary_upload.changed | default(false))
+          {{ (nexus_ui_force_restart | default(false) | bool)
+             or (nexus_ui_binary_upload.changed | default(false))
              or (nexus_ui_libraries_upload.changed | default(false))
              or (nexus_ui_runtime_status.stdout != "active") }}
 
@@ -184,6 +185,9 @@
           - SDL_VIDEODRIVER=dummy
           - "LD_LIBRARY_PATH={{ nexus_ui_remote_dir }}/lib"
           - "NEXUSD_SOCKET={{ nexus_ui_socket }}"
+          - /usr/bin/systemd-cat
+          - --identifier=nexus-ui
+          - --
           - "{{ nexus_ui_remote_dir }}/nexus-ui"
       when: nexus_ui_restart_required
 
