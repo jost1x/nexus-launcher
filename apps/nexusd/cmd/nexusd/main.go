@@ -61,14 +61,18 @@ func run() error {
 	connectServer := connect.NewServer()
 	grpchealth.Register(connectServer, checker)
 	adapter := platform.NewLinux()
+	hardwareWatcher := services.NewHardwareStatusHub()
+	go hardwareWatcher.MonitorHardwareStatus(ctx, adapter, 2*time.Second)
+	wifiWatcher := services.NewWifiStatusHub()
+	go wifiWatcher.MonitorWifiStatus(ctx, adapter, 2*time.Second)
 	go func() {
-		if err := adapter.WatchVolumeKeys(ctx); err != nil {
+		if err := adapter.WatchVolumeKeys(ctx, hardwareWatcher.Notify); err != nil {
 			slog.Warn("physical volume controls are unavailable", "error", err)
 		}
 	}()
 	nexusv1connect.RegisterSystemServiceHandler(connectServer, services.System{Adapter: adapter})
-	nexusv1connect.RegisterWifiServiceHandler(connectServer, &services.Wifi{Adapter: adapter})
-	nexusv1connect.RegisterHardwareServiceHandler(connectServer, services.Hardware{Adapter: adapter})
+	nexusv1connect.RegisterWifiServiceHandler(connectServer, &services.Wifi{Adapter: adapter, Watcher: wifiWatcher})
+	nexusv1connect.RegisterHardwareServiceHandler(connectServer, services.Hardware{Adapter: adapter, Watcher: hardwareWatcher})
 
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, connectServer)

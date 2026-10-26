@@ -105,11 +105,15 @@ service SystemService {
 
 service WifiService {
   rpc GetStatus(WifiServiceGetStatusRequest) returns (WifiServiceGetStatusResponse);
+  // Sends an initial snapshot and subsequent updates when Wi-Fi state changes.
+  rpc WatchStatus(WifiServiceGetStatusRequest) returns (stream WifiServiceGetStatusResponse);
   rpc Scan(ScanRequest) returns (ScanResponse);
 }
 
 service HardwareService {
   rpc GetStatus(HardwareServiceGetStatusRequest) returns (HardwareServiceGetStatusResponse);
+  // Sends an initial snapshot and subsequent updates when hardware state changes.
+  rpc WatchStatus(HardwareServiceGetStatusRequest) returns (stream HardwareServiceGetStatusResponse);
   rpc SetBrightness(SetBrightnessRequest) returns (SetBrightnessResponse);
   rpc SetVolume(SetVolumeRequest) returns (SetVolumeResponse);
   rpc PowerAction(PowerActionRequest) returns (PowerActionResponse);

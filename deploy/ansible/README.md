@@ -45,7 +45,7 @@ La UI se despliega aparte del daemon, directamente en el framebuffer y sin insta
 └── lib/
 ```
 
-El binario debe estar compilado con `NEXUS_UI_FBDEV=ON`; `lib/` contiene sus bibliotecas ARM64 de ejecución. El directorio por defecto coincide con el bundle usado en las pruebas; se puede indicar otra ruta con `-e nexus_ui_bundle_dir=/ruta/al/bundle`.
+El binario debe estar compilado con `NEXUS_UI_FBDEV=ON`; `lib/` contiene bibliotecas ARM64 de ejecución que no estén disponibles en la consola. El directorio por defecto coincide con el bundle usado en las pruebas; se puede indicar otra ruta con `-e nexus_ui_bundle_dir=/ruta/al/bundle`.
 
 Desde `deploy/ansible`:
 
@@ -53,7 +53,15 @@ Desde `deploy/ansible`:
 ansible-playbook playbooks/deploy-ui.yml -K
 ```
 
-El playbook comprueba que el destino sea ARM64, copia el ejecutable y las bibliotecas a `/tmp/nexus-r36s-bundle`, detiene la UI anterior con `SIGTERM`, devuelve la consola a la TTY 1 y abre la versión nueva en la TTY 2. También configura SDL como entrada de controles (`SDL_VIDEODRIVER=dummy`) y conecta la UI al socket de `nexusd`. La UI corre en una unidad systemd transitoria para que Ansible pueda iniciar y detener el proceso sin dejar un servicio habilitado después de reiniciar la consola. La aplicación cambia la TTY a modo gráfico mientras corre y restaura el modo texto al cerrarse. Se requiere `sudo` para acceder al framebuffer y cambiar la TTY.
+El playbook comprueba que el destino sea ARM64, instala SDL2, gRPC C++ y Protobuf desde APT en Debian (incluidas sus dependencias) y copia solo las bibliotecas del bundle que `ldconfig` todavía no encuentra en la consola. Así evita enviar de nuevo dependencias que el sistema puede mantener como paquetes. Luego detiene la UI anterior con `SIGTERM`, devuelve la consola a la TTY 1 y abre la versión nueva en la TTY 2. También configura SDL como entrada de controles (`SDL_VIDEODRIVER=dummy`) y conecta la UI al socket de `nexusd`. La UI corre en una unidad systemd transitoria para que Ansible pueda iniciar y detener el proceso sin dejar un servicio habilitado después de reiniciar la consola. La aplicación cambia la TTY a modo gráfico mientras corre y restaura el modo texto al cerrarse. Se requiere `sudo` para acceder al framebuffer y cambiar la TTY.
+
+Para iterar más rápido después de una instalación completa, cuando SDL2, gRPC y Protobuf ya estén instalados en la consola, omite la comprobación y copia de dependencias:
+
+```sh
+ansible-playbook playbooks/deploy-ui.yml -K --skip-tags ui_dependencies
+```
+
+La ruta normal sigue preparando dependencias. En ambas rutas el playbook compara el ejecutable remoto y solo detiene/reinicia la UI cuando cambió algún archivo o la unidad no está activa.
 
 Para cerrar la UI desde la consola:
 

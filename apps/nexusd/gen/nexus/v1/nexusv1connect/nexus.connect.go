@@ -35,10 +35,15 @@ const (
 	SystemServiceListCapabilitiesProcedure = "/nexus.v1.SystemService/ListCapabilities"
 	// WifiServiceGetStatusProcedure is the procedure name of the WifiService's GetStatus RPC.
 	WifiServiceGetStatusProcedure = "/nexus.v1.WifiService/GetStatus"
+	// WifiServiceWatchStatusProcedure is the procedure name of the WifiService's WatchStatus RPC.
+	WifiServiceWatchStatusProcedure = "/nexus.v1.WifiService/WatchStatus"
 	// WifiServiceScanProcedure is the procedure name of the WifiService's Scan RPC.
 	WifiServiceScanProcedure = "/nexus.v1.WifiService/Scan"
 	// HardwareServiceGetStatusProcedure is the procedure name of the HardwareService's GetStatus RPC.
 	HardwareServiceGetStatusProcedure = "/nexus.v1.HardwareService/GetStatus"
+	// HardwareServiceWatchStatusProcedure is the procedure name of the HardwareService's WatchStatus
+	// RPC.
+	HardwareServiceWatchStatusProcedure = "/nexus.v1.HardwareService/WatchStatus"
 	// HardwareServiceSetBrightnessProcedure is the procedure name of the HardwareService's
 	// SetBrightness RPC.
 	HardwareServiceSetBrightnessProcedure = "/nexus.v1.HardwareService/SetBrightness"
@@ -159,6 +164,13 @@ var (
 			Procedure:  WifiServiceGetStatusProcedure,
 		}
 	})
+	wifiServiceWatchStatusSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeServer,
+			Schema:     v1.File_nexus_v1_nexus_proto.Services().ByName("WifiService").Methods().ByName("WatchStatus"),
+			Procedure:  WifiServiceWatchStatusProcedure,
+		}
+	})
 	wifiServiceScanSpec = sync.OnceValue(func() connect.Spec {
 		return connect.Spec{
 			StreamType: connect.StreamTypeUnary,
@@ -171,6 +183,8 @@ var (
 // WifiServiceClient is a client for the nexus.v1.WifiService service.
 type WifiServiceClient interface {
 	GetStatus(context.Context, *v1.WifiServiceGetStatusRequest) (*v1.WifiServiceGetStatusResponse, error)
+	// Sends an initial snapshot and subsequent updates when Wi-Fi state changes.
+	WatchStatus(context.Context, *v1.WifiServiceGetStatusRequest) (WifiServiceWatchStatusClientStream, error)
 	Scan(context.Context, *v1.ScanRequest) (*v1.ScanResponse, error)
 }
 
@@ -180,9 +194,31 @@ func NewWifiServiceClient(client *connect.Client) WifiServiceClient {
 	return &wifiServiceClient{client: client}
 }
 
+// WifiServiceWatchStatusClientStream is the client stream for the WifiService's WatchStatus RPC.
+type WifiServiceWatchStatusClientStream struct {
+	stream connect.ClientStream
+}
+
+// Receive returns the next response message from the server.
+func (s WifiServiceWatchStatusClientStream) Receive() (*v1.WifiServiceGetStatusResponse, error) {
+	var res v1.WifiServiceGetStatusResponse
+	if err := s.stream.Receive(&res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// Close releases the stream's resources. It is idempotent and is typically deferred to clean up a
+// stream abandoned before io.EOF.
+func (s WifiServiceWatchStatusClientStream) Close() error {
+	return s.stream.Close()
+}
+
 // WifiServiceHandler is an implementation of the nexus.v1.WifiService service.
 type WifiServiceHandler interface {
 	GetStatus(context.Context, *v1.WifiServiceGetStatusRequest) (*v1.WifiServiceGetStatusResponse, error)
+	// Sends an initial snapshot and subsequent updates when Wi-Fi state changes.
+	WatchStatus(context.Context, *v1.WifiServiceGetStatusRequest, WifiServiceWatchStatusServerStream) error
 	Scan(context.Context, *v1.ScanRequest) (*v1.ScanResponse, error)
 }
 
@@ -191,8 +227,24 @@ func RegisterWifiServiceHandler(server *connect.Server, svc WifiServiceHandler) 
 	adapter := wifiServiceHandler{svc: svc}
 	server.Register(
 		connect.Method{Spec: wifiServiceGetStatusSpec(), Handler: adapter.getStatus},
+		connect.Method{Spec: wifiServiceWatchStatusSpec(), Handler: adapter.watchStatus},
 		connect.Method{Spec: wifiServiceScanSpec(), Handler: adapter.scan},
 	)
+}
+
+// WifiServiceWatchStatusServerStream is the server stream for the WifiService's WatchStatus RPC.
+type WifiServiceWatchStatusServerStream struct {
+	stream connect.ServerStream
+}
+
+// SendHeaders flushes the response headers without a message. The first Send does this implicitly.
+func (s WifiServiceWatchStatusServerStream) SendHeaders() error {
+	return s.stream.SendHeaders()
+}
+
+// Send sends a response message to the client.
+func (s WifiServiceWatchStatusServerStream) Send(res *v1.WifiServiceGetStatusResponse) error {
+	return s.stream.Send(res)
 }
 
 // UnimplementedWifiServiceHandler returns CodeUnimplemented from all methods.
@@ -200,6 +252,10 @@ type UnimplementedWifiServiceHandler struct{}
 
 func (UnimplementedWifiServiceHandler) GetStatus(context.Context, *v1.WifiServiceGetStatusRequest) (*v1.WifiServiceGetStatusResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "nexus.v1.WifiService.GetStatus is not implemented")
+}
+
+func (UnimplementedWifiServiceHandler) WatchStatus(context.Context, *v1.WifiServiceGetStatusRequest, WifiServiceWatchStatusServerStream) error {
+	return connect.NewError(connect.CodeUnimplemented, "nexus.v1.WifiService.WatchStatus is not implemented")
 }
 
 func (UnimplementedWifiServiceHandler) Scan(context.Context, *v1.ScanRequest) (*v1.ScanResponse, error) {
@@ -216,6 +272,14 @@ func (c *wifiServiceClient) GetStatus(ctx context.Context, req *v1.WifiServiceGe
 		return nil, err
 	}
 	return &res, nil
+}
+
+func (c *wifiServiceClient) WatchStatus(ctx context.Context, req *v1.WifiServiceGetStatusRequest) (WifiServiceWatchStatusClientStream, error) {
+	stream, err := c.client.CallServerStream(ctx, wifiServiceWatchStatusSpec(), req)
+	if err != nil {
+		return WifiServiceWatchStatusClientStream{}, err
+	}
+	return WifiServiceWatchStatusClientStream{stream: stream}, nil
 }
 
 func (c *wifiServiceClient) Scan(ctx context.Context, req *v1.ScanRequest) (*v1.ScanResponse, error) {
@@ -240,6 +304,14 @@ func (h wifiServiceHandler) getStatus(ctx context.Context, _ connect.Spec, strea
 	return stream.Send(res)
 }
 
+func (h wifiServiceHandler) watchStatus(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.WifiServiceGetStatusRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	return h.svc.WatchStatus(ctx, &req, WifiServiceWatchStatusServerStream{stream: stream})
+}
+
 func (h wifiServiceHandler) scan(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
 	var req v1.ScanRequest
 	if err := stream.Receive(&req); err != nil {
@@ -258,6 +330,13 @@ var (
 			StreamType: connect.StreamTypeUnary,
 			Schema:     v1.File_nexus_v1_nexus_proto.Services().ByName("HardwareService").Methods().ByName("GetStatus"),
 			Procedure:  HardwareServiceGetStatusProcedure,
+		}
+	})
+	hardwareServiceWatchStatusSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeServer,
+			Schema:     v1.File_nexus_v1_nexus_proto.Services().ByName("HardwareService").Methods().ByName("WatchStatus"),
+			Procedure:  HardwareServiceWatchStatusProcedure,
 		}
 	})
 	hardwareServiceSetBrightnessSpec = sync.OnceValue(func() connect.Spec {
@@ -286,6 +365,8 @@ var (
 // HardwareServiceClient is a client for the nexus.v1.HardwareService service.
 type HardwareServiceClient interface {
 	GetStatus(context.Context, *v1.HardwareServiceGetStatusRequest) (*v1.HardwareServiceGetStatusResponse, error)
+	// Sends an initial snapshot and subsequent updates when hardware state changes.
+	WatchStatus(context.Context, *v1.HardwareServiceGetStatusRequest) (HardwareServiceWatchStatusClientStream, error)
 	SetBrightness(context.Context, *v1.SetBrightnessRequest) (*v1.SetBrightnessResponse, error)
 	SetVolume(context.Context, *v1.SetVolumeRequest) (*v1.SetVolumeResponse, error)
 	PowerAction(context.Context, *v1.PowerActionRequest) (*v1.PowerActionResponse, error)
@@ -297,9 +378,32 @@ func NewHardwareServiceClient(client *connect.Client) HardwareServiceClient {
 	return &hardwareServiceClient{client: client}
 }
 
+// HardwareServiceWatchStatusClientStream is the client stream for the HardwareService's WatchStatus
+// RPC.
+type HardwareServiceWatchStatusClientStream struct {
+	stream connect.ClientStream
+}
+
+// Receive returns the next response message from the server.
+func (s HardwareServiceWatchStatusClientStream) Receive() (*v1.HardwareServiceGetStatusResponse, error) {
+	var res v1.HardwareServiceGetStatusResponse
+	if err := s.stream.Receive(&res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// Close releases the stream's resources. It is idempotent and is typically deferred to clean up a
+// stream abandoned before io.EOF.
+func (s HardwareServiceWatchStatusClientStream) Close() error {
+	return s.stream.Close()
+}
+
 // HardwareServiceHandler is an implementation of the nexus.v1.HardwareService service.
 type HardwareServiceHandler interface {
 	GetStatus(context.Context, *v1.HardwareServiceGetStatusRequest) (*v1.HardwareServiceGetStatusResponse, error)
+	// Sends an initial snapshot and subsequent updates when hardware state changes.
+	WatchStatus(context.Context, *v1.HardwareServiceGetStatusRequest, HardwareServiceWatchStatusServerStream) error
 	SetBrightness(context.Context, *v1.SetBrightnessRequest) (*v1.SetBrightnessResponse, error)
 	SetVolume(context.Context, *v1.SetVolumeRequest) (*v1.SetVolumeResponse, error)
 	PowerAction(context.Context, *v1.PowerActionRequest) (*v1.PowerActionResponse, error)
@@ -311,10 +415,27 @@ func RegisterHardwareServiceHandler(server *connect.Server, svc HardwareServiceH
 	adapter := hardwareServiceHandler{svc: svc}
 	server.Register(
 		connect.Method{Spec: hardwareServiceGetStatusSpec(), Handler: adapter.getStatus},
+		connect.Method{Spec: hardwareServiceWatchStatusSpec(), Handler: adapter.watchStatus},
 		connect.Method{Spec: hardwareServiceSetBrightnessSpec(), Handler: adapter.setBrightness},
 		connect.Method{Spec: hardwareServiceSetVolumeSpec(), Handler: adapter.setVolume},
 		connect.Method{Spec: hardwareServicePowerActionSpec(), Handler: adapter.powerAction},
 	)
+}
+
+// HardwareServiceWatchStatusServerStream is the server stream for the HardwareService's WatchStatus
+// RPC.
+type HardwareServiceWatchStatusServerStream struct {
+	stream connect.ServerStream
+}
+
+// SendHeaders flushes the response headers without a message. The first Send does this implicitly.
+func (s HardwareServiceWatchStatusServerStream) SendHeaders() error {
+	return s.stream.SendHeaders()
+}
+
+// Send sends a response message to the client.
+func (s HardwareServiceWatchStatusServerStream) Send(res *v1.HardwareServiceGetStatusResponse) error {
+	return s.stream.Send(res)
 }
 
 // UnimplementedHardwareServiceHandler returns CodeUnimplemented from all methods.
@@ -322,6 +443,10 @@ type UnimplementedHardwareServiceHandler struct{}
 
 func (UnimplementedHardwareServiceHandler) GetStatus(context.Context, *v1.HardwareServiceGetStatusRequest) (*v1.HardwareServiceGetStatusResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "nexus.v1.HardwareService.GetStatus is not implemented")
+}
+
+func (UnimplementedHardwareServiceHandler) WatchStatus(context.Context, *v1.HardwareServiceGetStatusRequest, HardwareServiceWatchStatusServerStream) error {
+	return connect.NewError(connect.CodeUnimplemented, "nexus.v1.HardwareService.WatchStatus is not implemented")
 }
 
 func (UnimplementedHardwareServiceHandler) SetBrightness(context.Context, *v1.SetBrightnessRequest) (*v1.SetBrightnessResponse, error) {
@@ -346,6 +471,14 @@ func (c *hardwareServiceClient) GetStatus(ctx context.Context, req *v1.HardwareS
 		return nil, err
 	}
 	return &res, nil
+}
+
+func (c *hardwareServiceClient) WatchStatus(ctx context.Context, req *v1.HardwareServiceGetStatusRequest) (HardwareServiceWatchStatusClientStream, error) {
+	stream, err := c.client.CallServerStream(ctx, hardwareServiceWatchStatusSpec(), req)
+	if err != nil {
+		return HardwareServiceWatchStatusClientStream{}, err
+	}
+	return HardwareServiceWatchStatusClientStream{stream: stream}, nil
 }
 
 func (c *hardwareServiceClient) SetBrightness(ctx context.Context, req *v1.SetBrightnessRequest) (*v1.SetBrightnessResponse, error) {
@@ -384,6 +517,14 @@ func (h hardwareServiceHandler) getStatus(ctx context.Context, _ connect.Spec, s
 		return err
 	}
 	return stream.Send(res)
+}
+
+func (h hardwareServiceHandler) watchStatus(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req v1.HardwareServiceGetStatusRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	return h.svc.WatchStatus(ctx, &req, HardwareServiceWatchStatusServerStream{stream: stream})
 }
 
 func (h hardwareServiceHandler) setBrightness(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {

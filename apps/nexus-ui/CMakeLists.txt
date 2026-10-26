@@ -64,11 +64,30 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(lvgl)
 
 add_executable(nexus-ui
-    src/main.cpp
-    src/ui.cpp
-    src/views.cpp
-    src/components.cpp
-    src/rpc_client.cpp
+    src/app/main.cpp
+    src/platform/controller_input.cpp
+    src/platform/display_backend.cpp
+    src/platform/memory_monitor.cpp
+    src/ui/ui.cpp
+    src/ui/ui_navigation.cpp
+    src/ui/ui_input.cpp
+    src/ui/ui_rpc.cpp
+    src/ui/ui_controls.cpp
+    src/ui/views/views.cpp
+    src/ui/views/view_shell.cpp
+    src/ui/views/views_home.cpp
+    src/ui/views/views_library.cpp
+    src/ui/views/views_settings.cpp
+    src/ui/views/view_wifi.cpp
+    src/ui/views/view_controls.cpp
+    src/ui/views/view_system.cpp
+    src/ui/views/view_about.cpp
+    src/ui/components/components.cpp
+    src/rpc/rpc_client.cpp
+    src/rpc/rpc_hardware_watch.cpp
+    src/rpc/rpc_wifi_watch.cpp
+    src/rpc/rpc_operations.cpp
+    src/assets/icons/lucide_icons.c
     src/assets/fonts/nexus_font_16.c
     src/assets/fonts/nexus_font_28.c
     ${PROTO_SOURCES})

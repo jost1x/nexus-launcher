@@ -1257,12 +1257,14 @@ const file_nexus_v1_nexus_proto_rawDesc = "" +
 	"\x1aPOWER_ACTION_KIND_POWEROFF\x10\x022\xaa\x01\n" +
 	"\rSystemService\x12>\n" +
 	"\aGetInfo\x12\x18.nexus.v1.GetInfoRequest\x1a\x19.nexus.v1.GetInfoResponse\x12Y\n" +
-	"\x10ListCapabilities\x12!.nexus.v1.ListCapabilitiesRequest\x1a\".nexus.v1.ListCapabilitiesResponse2\xa0\x01\n" +
+	"\x10ListCapabilities\x12!.nexus.v1.ListCapabilitiesRequest\x1a\".nexus.v1.ListCapabilitiesResponse2\x80\x02\n" +
 	"\vWifiService\x12Z\n" +
-	"\tGetStatus\x12%.nexus.v1.WifiServiceGetStatusRequest\x1a&.nexus.v1.WifiServiceGetStatusResponse\x125\n" +
-	"\x04Scan\x12\x15.nexus.v1.ScanRequest\x1a\x16.nexus.v1.ScanResponse2\xd9\x02\n" +
+	"\tGetStatus\x12%.nexus.v1.WifiServiceGetStatusRequest\x1a&.nexus.v1.WifiServiceGetStatusResponse\x12^\n" +
+	"\vWatchStatus\x12%.nexus.v1.WifiServiceGetStatusRequest\x1a&.nexus.v1.WifiServiceGetStatusResponse0\x01\x125\n" +
+	"\x04Scan\x12\x15.nexus.v1.ScanRequest\x1a\x16.nexus.v1.ScanResponse2\xc1\x03\n" +
 	"\x0fHardwareService\x12b\n" +
-	"\tGetStatus\x12).nexus.v1.HardwareServiceGetStatusRequest\x1a*.nexus.v1.HardwareServiceGetStatusResponse\x12P\n" +
+	"\tGetStatus\x12).nexus.v1.HardwareServiceGetStatusRequest\x1a*.nexus.v1.HardwareServiceGetStatusResponse\x12f\n" +
+	"\vWatchStatus\x12).nexus.v1.HardwareServiceGetStatusRequest\x1a*.nexus.v1.HardwareServiceGetStatusResponse0\x01\x12P\n" +
 	"\rSetBrightness\x12\x1e.nexus.v1.SetBrightnessRequest\x1a\x1f.nexus.v1.SetBrightnessResponse\x12D\n" +
 	"\tSetVolume\x12\x1a.nexus.v1.SetVolumeRequest\x1a\x1b.nexus.v1.SetVolumeResponse\x12J\n" +
 	"\vPowerAction\x12\x1c.nexus.v1.PowerActionRequest\x1a\x1d.nexus.v1.PowerActionResponseB\x1dZ\x1bnexusd/gen/nexus/v1;nexusv1b\x06proto3"
@@ -1309,21 +1311,25 @@ var file_nexus_v1_nexus_proto_depIdxs = []int32{
 	1,  // 3: nexus.v1.SystemService.GetInfo:input_type -> nexus.v1.GetInfoRequest
 	4,  // 4: nexus.v1.SystemService.ListCapabilities:input_type -> nexus.v1.ListCapabilitiesRequest
 	6,  // 5: nexus.v1.WifiService.GetStatus:input_type -> nexus.v1.WifiServiceGetStatusRequest
-	8,  // 6: nexus.v1.WifiService.Scan:input_type -> nexus.v1.ScanRequest
-	11, // 7: nexus.v1.HardwareService.GetStatus:input_type -> nexus.v1.HardwareServiceGetStatusRequest
-	15, // 8: nexus.v1.HardwareService.SetBrightness:input_type -> nexus.v1.SetBrightnessRequest
-	13, // 9: nexus.v1.HardwareService.SetVolume:input_type -> nexus.v1.SetVolumeRequest
-	17, // 10: nexus.v1.HardwareService.PowerAction:input_type -> nexus.v1.PowerActionRequest
-	2,  // 11: nexus.v1.SystemService.GetInfo:output_type -> nexus.v1.GetInfoResponse
-	5,  // 12: nexus.v1.SystemService.ListCapabilities:output_type -> nexus.v1.ListCapabilitiesResponse
-	7,  // 13: nexus.v1.WifiService.GetStatus:output_type -> nexus.v1.WifiServiceGetStatusResponse
-	10, // 14: nexus.v1.WifiService.Scan:output_type -> nexus.v1.ScanResponse
-	12, // 15: nexus.v1.HardwareService.GetStatus:output_type -> nexus.v1.HardwareServiceGetStatusResponse
-	16, // 16: nexus.v1.HardwareService.SetBrightness:output_type -> nexus.v1.SetBrightnessResponse
-	14, // 17: nexus.v1.HardwareService.SetVolume:output_type -> nexus.v1.SetVolumeResponse
-	18, // 18: nexus.v1.HardwareService.PowerAction:output_type -> nexus.v1.PowerActionResponse
-	11, // [11:19] is the sub-list for method output_type
-	3,  // [3:11] is the sub-list for method input_type
+	6,  // 6: nexus.v1.WifiService.WatchStatus:input_type -> nexus.v1.WifiServiceGetStatusRequest
+	8,  // 7: nexus.v1.WifiService.Scan:input_type -> nexus.v1.ScanRequest
+	11, // 8: nexus.v1.HardwareService.GetStatus:input_type -> nexus.v1.HardwareServiceGetStatusRequest
+	11, // 9: nexus.v1.HardwareService.WatchStatus:input_type -> nexus.v1.HardwareServiceGetStatusRequest
+	15, // 10: nexus.v1.HardwareService.SetBrightness:input_type -> nexus.v1.SetBrightnessRequest
+	13, // 11: nexus.v1.HardwareService.SetVolume:input_type -> nexus.v1.SetVolumeRequest
+	17, // 12: nexus.v1.HardwareService.PowerAction:input_type -> nexus.v1.PowerActionRequest
+	2,  // 13: nexus.v1.SystemService.GetInfo:output_type -> nexus.v1.GetInfoResponse
+	5,  // 14: nexus.v1.SystemService.ListCapabilities:output_type -> nexus.v1.ListCapabilitiesResponse
+	7,  // 15: nexus.v1.WifiService.GetStatus:output_type -> nexus.v1.WifiServiceGetStatusResponse
+	7,  // 16: nexus.v1.WifiService.WatchStatus:output_type -> nexus.v1.WifiServiceGetStatusResponse
+	10, // 17: nexus.v1.WifiService.Scan:output_type -> nexus.v1.ScanResponse
+	12, // 18: nexus.v1.HardwareService.GetStatus:output_type -> nexus.v1.HardwareServiceGetStatusResponse
+	12, // 19: nexus.v1.HardwareService.WatchStatus:output_type -> nexus.v1.HardwareServiceGetStatusResponse
+	16, // 20: nexus.v1.HardwareService.SetBrightness:output_type -> nexus.v1.SetBrightnessResponse
+	14, // 21: nexus.v1.HardwareService.SetVolume:output_type -> nexus.v1.SetVolumeResponse
+	18, // 22: nexus.v1.HardwareService.PowerAction:output_type -> nexus.v1.PowerActionResponse
+	13, // [13:23] is the sub-list for method output_type
+	3,  // [3:13] is the sub-list for method input_type
 	3,  // [3:3] is the sub-list for extension type_name
 	3,  // [3:3] is the sub-list for extension extendee
 	0,  // [0:3] is the sub-list for field type_name

@@ -1,7 +1,5 @@
-#include "components.h"
+#include "ui/components/components.h"
 #include "assets/fonts.h"
-
-#include <cstdint>
 
 namespace nexus::components {
 namespace {
@@ -43,8 +41,7 @@ void style_focusable(lv_obj_t* object) {
     lv_obj_set_style_outline_pad(object, 2, LV_STATE_FOCUSED);
 }
 
-lv_obj_t* create_button(lv_obj_t* parent, const char* text, Action action, lv_group_t* group,
-                        int width, int height, bool selected) {
+lv_obj_t* create_button(lv_obj_t* parent, const char* text, int width, int height, bool selected) {
     auto* button = lv_button_create(parent);
     lv_obj_set_size(button, width, height);
     lv_obj_set_style_bg_color(button, selected ? kAccent : kPanelLight, 0);
@@ -54,20 +51,15 @@ lv_obj_t* create_button(lv_obj_t* parent, const char* text, Action action, lv_gr
     lv_obj_set_style_pad_hor(button, 10, 0);
     lv_obj_set_style_shadow_width(button, selected ? 8 : 0, 0);
     lv_obj_set_style_shadow_color(button, kAccent, 0);
-    style_focusable(button);
-    lv_obj_add_event_cb(button, UiController::action_event, LV_EVENT_CLICKED,
-                        reinterpret_cast<void*>(static_cast<std::uintptr_t>(action)));
-    lv_obj_add_event_cb(button, UiController::key_event, LV_EVENT_KEY, nullptr);
     auto* label = lv_label_create(button);
     lv_label_set_text(label, text);
     lv_obj_set_style_text_font(label, &nexus_font_16, 0);
     lv_obj_set_style_text_color(label, kText, 0);
     lv_obj_center(label);
-    if (group != nullptr) lv_group_add_obj(group, button);
     return button;
 }
 
-lv_obj_t* create_slider(lv_obj_t* parent, int value, Action action, lv_group_t* group, int width) {
+lv_obj_t* create_slider(lv_obj_t* parent, int value, int width) {
     auto* slider = lv_slider_create(parent);
     lv_obj_set_size(slider, width, 20);
     lv_slider_set_range(slider, 0, 100);
@@ -76,11 +68,6 @@ lv_obj_t* create_slider(lv_obj_t* parent, int value, Action action, lv_group_t* 
     lv_obj_set_style_bg_color(slider, kAccent, LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(slider, kText, LV_PART_KNOB);
     lv_obj_set_style_pad_all(slider, 3, LV_PART_KNOB);
-    style_focusable(slider);
-    lv_obj_add_event_cb(slider, UiController::slider_event, LV_EVENT_VALUE_CHANGED,
-                        reinterpret_cast<void*>(static_cast<std::uintptr_t>(action)));
-    lv_obj_add_event_cb(slider, UiController::key_event, LV_EVENT_KEY, nullptr);
-    if (group != nullptr) lv_group_add_obj(group, slider);
     return slider;
 }
 
@@ -92,12 +79,6 @@ lv_obj_t* create_value_row(lv_obj_t* parent, const char* title, const char* valu
     lv_obj_set_style_text_align(content, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_align(content, LV_ALIGN_TOP_RIGHT, 0, y);
     return content;
-}
-
-lv_obj_t* create_section_title(lv_obj_t* parent, const char* title, int y) {
-    auto* label = create_label(parent, title, kText);
-    lv_obj_set_pos(label, 0, y);
-    return label;
 }
 
 }  // namespace nexus::components

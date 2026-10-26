@@ -44,7 +44,7 @@ const (
 
 // WatchVolumeKeys applies the R36S gpio-keys volume buttons to the ALSA master.
 // It leaves the input device available to other consumers and ignores unrelated keys.
-func (p *Linux) WatchVolumeKeys(ctx context.Context) error {
+func (p *Linux) WatchVolumeKeys(ctx context.Context, onChange func()) error {
 	device, err := p.volumeKeyDevice()
 	if err != nil {
 		return err
@@ -105,6 +105,8 @@ func (p *Linux) WatchVolumeKeys(ctx context.Context) error {
 			}
 			if err != nil {
 				slog.Warn("hardware key could not change level", "error", err)
+			} else if onChange != nil {
+				onChange()
 			}
 		}
 	}

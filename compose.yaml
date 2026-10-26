@@ -1,0 +1,35 @@
+services:
+  build-ui:
+    image: nexus-ui-arm64-builder
+    build:
+      context: .
+      dockerfile: docker/ui-arm64.Dockerfile
+    platform: linux/amd64
+    working_dir: /workspace
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    volumes:
+      - .:/workspace
+    environment:
+      BUILD_JOBS: ${BUILD_JOBS:-2}
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 1024
+
+  build-daemon:
+    image: nexusd-arm64-builder
+    build:
+      context: .
+      dockerfile: docker/nexusd-arm64.Dockerfile
+    platform: linux/amd64
+    working_dir: /workspace/apps/nexusd
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    volumes:
+      - .:/workspace
+    environment:
+      GOMODCACHE: /workspace/build/docker/arm64/go-mod-cache
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 1024
+

@@ -19,6 +19,12 @@ Este documento define las reglas de trabajo para R36S NEXUS. El proyecto es un l
 
 Verificar las versiones y la disponibilidad de las dependencias en el entorno antes de fijar la configuración de compilación. No afirmar compatibilidad con una versión o hardware sin comprobarla.
 
+## Entorno de compilación y despliegue
+
+- Compilar siempre en este PC (el entorno de desarrollo local), incluida la UI destinada a ARM64. Para la R36S usar compilación cruzada y un sysroot/toolchain local cuando haga falta.
+- No compilar en la R36S ni instalar allí compiladores, CMake, cabeceras o dependencias `-dev` para construir el proyecto. La consola se usa para ejecutar y validar los artefactos desplegados.
+- Si faltan dependencias para compilar localmente, resolverlas en el PC o preparar un sysroot local; no trasladar la compilación a la consola como alternativa.
+
 ## Límites arquitectónicos
 
 - `nexus-ui` controla la presentación, navegación, entrada, temas, idiomas, sonidos y preferencias visuales.

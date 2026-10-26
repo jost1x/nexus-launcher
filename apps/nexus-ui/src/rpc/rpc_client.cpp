@@ -1,4 +1,4 @@
-#include "rpc_client.h"
+#include "rpc/rpc_client.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -30,22 +30,50 @@ std::string default_socket_path() {
     return {};
 }
 
-RpcClient::RpcClient(std::string socket_path) : socket_path_(std::move(socket_path)), worker_(&RpcClient::run, this) {}
+RpcClient::RpcClient(std::string socket_path)
+    : socket_path_(std::move(socket_path)),
+      channel_(grpc::CreateChannel("unix:" + socket_path_, grpc::InsecureChannelCredentials())),
+      wifi_stub_(nexus::v1::WifiService::NewStub(channel_)),
+      hardware_stub_(nexus::v1::HardwareService::NewStub(channel_)),
+      system_stub_(nexus::v1::SystemService::NewStub(channel_)),
+      worker_(&RpcClient::run, this) {}
 
 RpcClient::~RpcClient() {
     {
         std::lock_guard lock(mutex_);
         stopping_ = true;
         if (active_context_) active_context_->TryCancel();
+        watch_cancelled_ = true;
+        if (watch_context_) watch_context_->TryCancel();
+        wifi_watch_cancelled_ = true;
+        if (wifi_watch_context_) wifi_watch_context_->TryCancel();
         for (auto& task : queue_) task.context->TryCancel();
     }
-    ready_.notify_one();
+    ready_.notify_all();
     if (worker_.joinable()) worker_.join();
+    if (watch_thread_.joinable()) watch_thread_.join();
+    if (wifi_watch_thread_.joinable()) wifi_watch_thread_.join();
 }
 
 uint64_t RpcClient::request_wifi_status() { return submit(RpcOperation::WifiStatus); }
+uint64_t RpcClient::watch_wifi_status() {
+    std::lock_guard lock(mutex_);
+    if (stopping_) return 0;
+    if (wifi_watch_id_ != 0) return wifi_watch_id_;
+    wifi_watch_id_ = next_id_++;
+    wifi_watch_thread_ = std::thread(&RpcClient::run_wifi_watch, this, wifi_watch_id_);
+    return wifi_watch_id_;
+}
 uint64_t RpcClient::scan_wifi(bool refresh) { return submit(RpcOperation::WifiScan, 0, refresh); }
 uint64_t RpcClient::request_hardware_status() { return submit(RpcOperation::HardwareStatus); }
+uint64_t RpcClient::watch_hardware_status() {
+    std::lock_guard lock(mutex_);
+    if (stopping_) return 0;
+    if (watch_id_ != 0) return watch_id_;
+    watch_id_ = next_id_++;
+    watch_thread_ = std::thread(&RpcClient::run_hardware_watch, this, watch_id_);
+    return watch_id_;
+}
 uint64_t RpcClient::request_system_info() { return submit(RpcOperation::SystemInfo); }
 uint64_t RpcClient::set_brightness(int percent) { return submit(RpcOperation::SetBrightness, percent); }
 uint64_t RpcClient::set_volume(int percent) { return submit(RpcOperation::SetVolume, percent); }
@@ -58,12 +86,22 @@ uint64_t RpcClient::submit(RpcOperation operation, int percent, bool refresh) {
     if (stopping_) return 0;
     const auto id = next_id_++;
     queue_.push_back(Task{id, operation, percent, refresh, std::move(context)});
-    ready_.notify_one();
+    ready_.notify_all();
     return id;
 }
 
 void RpcClient::cancel(uint64_t id) {
     std::lock_guard lock(mutex_);
+    if (watch_id_ == id) {
+        watch_cancelled_ = true;
+        if (watch_context_) watch_context_->TryCancel();
+        ready_.notify_all();
+    }
+    if (wifi_watch_id_ == id) {
+        wifi_watch_cancelled_ = true;
+        if (wifi_watch_context_) wifi_watch_context_->TryCancel();
+        ready_.notify_all();
+    }
     if (active_id_ == id && active_context_) active_context_->TryCancel();
     for (auto& task : queue_) {
         if (task.id == id) task.context->TryCancel();
@@ -78,11 +116,6 @@ std::vector<RpcResult> RpcClient::take_results() {
 }
 
 void RpcClient::run() {
-    channel_ = grpc::CreateChannel("unix:" + socket_path_, grpc::InsecureChannelCredentials());
-    wifi_stub_ = nexus::v1::WifiService::NewStub(channel_);
-    hardware_stub_ = nexus::v1::HardwareService::NewStub(channel_);
-    system_stub_ = nexus::v1::SystemService::NewStub(channel_);
-
     while (true) {
         Task task{};
         {
@@ -102,63 +135,6 @@ void RpcClient::run() {
             active_id_ = 0;
         }
     }
-}
-
-RpcResult RpcClient::invoke(const Task& task) {
-    RpcResult result;
-    result.id = task.id;
-    result.operation = task.operation;
-
-    switch (task.operation) {
-        case RpcOperation::WifiStatus: {
-            nexus::v1::WifiServiceGetStatusRequest request;
-            nexus::v1::WifiServiceGetStatusResponse response;
-            result.status = wifi_stub_->GetStatus(task.context.get(), request, &response);
-            result.payload = std::move(response);
-            break;
-        }
-        case RpcOperation::WifiScan: {
-            nexus::v1::ScanRequest request;
-            request.set_refresh(task.refresh);
-            nexus::v1::ScanResponse response;
-            result.status = wifi_stub_->Scan(task.context.get(), request, &response);
-            result.payload = std::move(response);
-            break;
-        }
-        case RpcOperation::HardwareStatus: {
-            nexus::v1::HardwareServiceGetStatusRequest request;
-            nexus::v1::HardwareServiceGetStatusResponse response;
-            result.status = hardware_stub_->GetStatus(task.context.get(), request, &response);
-            result.payload = std::move(response);
-            break;
-        }
-        case RpcOperation::SystemInfo: {
-            nexus::v1::GetInfoRequest request;
-            nexus::v1::GetInfoResponse response;
-            result.status = system_stub_->GetInfo(task.context.get(), request, &response);
-            result.payload = std::move(response);
-            break;
-        }
-        case RpcOperation::SetBrightness: {
-            nexus::v1::SetBrightnessRequest request;
-            request.set_percent(task.percent);
-            request.set_confirmed(true);
-            nexus::v1::SetBrightnessResponse response;
-            result.status = hardware_stub_->SetBrightness(task.context.get(), request, &response);
-            result.payload = std::move(response);
-            break;
-        }
-        case RpcOperation::SetVolume: {
-            nexus::v1::SetVolumeRequest request;
-            request.set_percent(task.percent);
-            request.set_confirmed(true);
-            nexus::v1::SetVolumeResponse response;
-            result.status = hardware_stub_->SetVolume(task.context.get(), request, &response);
-            result.payload = std::move(response);
-            break;
-        }
-    }
-    return result;
 }
 
 }  // namespace nexus

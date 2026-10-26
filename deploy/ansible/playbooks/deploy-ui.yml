@@ -40,6 +40,40 @@
           - nexus_ui_libraries.stat.isdir
         fail_msg: "Build/package the ARM64 framebuffer app and place nexus-ui plus lib/ in {{ nexus_ui_bundle_dir }}."
 
+    - name: Install UI runtime dependencies from Debian packages
+      become: true
+      ansible.builtin.apt:
+        name:
+          - libc-bin
+          - libsdl2-2.0-0
+          - libgrpc++1.51
+          - libprotobuf32
+        state: present
+      when:
+        - ansible_facts.os_family == "Debian"
+      tags:
+        - ui_dependencies
+
+    - name: Read libraries available after package installation
+      ansible.builtin.shell: "/sbin/ldconfig -p | awk '{print $1}' | sort -u"
+      args:
+        executable: /bin/sh
+      register: nexus_ui_target_libraries
+      changed_when: false
+      tags:
+        - ui_dependencies
+
+    - name: List top-level runtime libraries in the bundle
+      ansible.builtin.find:
+        paths: "{{ nexus_ui_bundle_dir }}/lib"
+        file_type: file
+        recurse: false
+      delegate_to: localhost
+      become: false
+      register: nexus_ui_bundle_libraries
+      tags:
+        - ui_dependencies
+
     - name: Create the root-owned runtime directory
       become: true
       ansible.builtin.file:
@@ -57,15 +91,41 @@
         owner: root
         group: root
         mode: "0755"
+      register: nexus_ui_binary_upload
 
     - name: Upload the UI runtime libraries
       become: true
       ansible.builtin.copy:
-        src: "{{ nexus_ui_bundle_dir }}/lib/"
-        dest: "{{ nexus_ui_remote_dir }}/lib/"
+        src: "{{ item.path }}"
+        dest: "{{ nexus_ui_remote_dir }}/lib/{{ item.path | basename }}"
         owner: root
         group: root
-        directory_mode: "0755"
+        mode: "0644"
+      loop: "{{ nexus_ui_bundle_libraries.files }}"
+      when: item.path | basename not in nexus_ui_target_libraries.stdout_lines
+      loop_control:
+        label: "{{ item.path | basename }}"
+      register: nexus_ui_libraries_upload
+      tags:
+        - ui_dependencies
+
+    - name: Check whether the UI runtime unit is active
+      become: true
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - "{{ nexus_ui_runtime_unit }}.service"
+      register: nexus_ui_runtime_status
+      failed_when: false
+      changed_when: false
+
+    - name: Decide whether the UI needs a restart
+      ansible.builtin.set_fact:
+        nexus_ui_restart_required: >-
+          {{ (nexus_ui_binary_upload.changed | default(false))
+             or (nexus_ui_libraries_upload.changed | default(false))
+             or (nexus_ui_runtime_status.stdout != "active") }}
 
     - name: Stop the currently running UI before switching virtual terminals
       become: true
@@ -73,7 +133,7 @@
         set -eu
         systemctl stop --no-block {{ (nexus_ui_runtime_unit ~ '.service') | quote }} >/dev/null 2>&1 || true
         if pgrep -x nexus-ui >/dev/null; then
-          pkill -TERM -x nexus-ui
+          pkill -TERM -x nexus-ui || true
           i=0
           while pgrep -x nexus-ui >/dev/null && [ "$i" -lt 10 ]; do
             sleep 1
@@ -89,14 +149,19 @@
         executable: /bin/sh
       register: nexus_ui_stop
       changed_when: "'stopped' in nexus_ui_stop.stdout"
+      when: nexus_ui_restart_required
 
     - name: Return to the text console before launching the UI
       become: true
       ansible.builtin.command:
         argv:
+          - timeout
+          - 2s
           - chvt
           - "1"
       changed_when: false
+      failed_when: false
+      when: nexus_ui_restart_required
 
     - name: Launch the UI on virtual terminal 2
       become: true
@@ -110,6 +175,7 @@
           - --
           - openvt
           - -f
+          - -w
           - -c
           - "2"
           - -s
@@ -119,6 +185,7 @@
           - "LD_LIBRARY_PATH={{ nexus_ui_remote_dir }}/lib"
           - "NEXUSD_SOCKET={{ nexus_ui_socket }}"
           - "{{ nexus_ui_remote_dir }}/nexus-ui"
+      when: nexus_ui_restart_required
 
     - name: Confirm that the transient UI unit is running
       become: true
@@ -128,3 +195,4 @@
           - is-active
           - "{{ nexus_ui_runtime_unit }}.service"
       changed_when: false
+      when: nexus_ui_restart_required

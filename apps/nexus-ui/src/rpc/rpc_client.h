@@ -17,7 +17,7 @@
 
 namespace nexus {
 
-enum class RpcOperation { WifiStatus, WifiScan, HardwareStatus, SystemInfo, SetBrightness, SetVolume };
+enum class RpcOperation { WifiStatus, WifiWatch, WifiScan, HardwareStatus, HardwareWatch, SystemInfo, SetBrightness, SetVolume };
 
 using RpcPayload = std::variant<nexus::v1::WifiServiceGetStatusResponse,
                                 nexus::v1::ScanResponse,
@@ -41,8 +41,10 @@ public:
     RpcClient& operator=(const RpcClient&) = delete;
 
     uint64_t request_wifi_status();
+    uint64_t watch_wifi_status();
     uint64_t scan_wifi(bool refresh = true);
     uint64_t request_hardware_status();
+    uint64_t watch_hardware_status();
     uint64_t request_system_info();
     uint64_t set_brightness(int percent);
     uint64_t set_volume(int percent);
@@ -60,6 +62,8 @@ private:
 
     uint64_t submit(RpcOperation operation, int percent = 0, bool refresh = false);
     void run();
+    void run_wifi_watch(uint64_t id);
+    void run_hardware_watch(uint64_t id);
     RpcResult invoke(const Task& task);
 
     std::string socket_path_;
@@ -73,9 +77,17 @@ private:
     std::vector<RpcResult> completed_;
     std::shared_ptr<grpc::ClientContext> active_context_;
     uint64_t active_id_ = 0;
+    std::shared_ptr<grpc::ClientContext> watch_context_;
+    uint64_t watch_id_ = 0;
+    std::shared_ptr<grpc::ClientContext> wifi_watch_context_;
+    uint64_t wifi_watch_id_ = 0;
     uint64_t next_id_ = 1;
     bool stopping_ = false;
+    bool watch_cancelled_ = false;
+    bool wifi_watch_cancelled_ = false;
     std::thread worker_;
+    std::thread watch_thread_;
+    std::thread wifi_watch_thread_;
 };
 
 std::string default_socket_path();

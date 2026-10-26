@@ -1,0 +1,7 @@
+.git
+.github
+**/bin
+build
+**/build
+**/cmake-build-*
+deploy/ansible/.venv

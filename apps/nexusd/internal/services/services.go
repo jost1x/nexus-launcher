@@ -2,11 +2,14 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	nexusv1 "nexusd/gen/nexus/v1"
+	nexusv1connect "nexusd/gen/nexus/v1/nexusv1connect"
 	"nexusd/internal/platform"
 )
 
@@ -34,6 +37,7 @@ type wifiScanCall struct {
 
 type Wifi struct {
 	Adapter  *platform.Linux
+	Watcher  *WifiStatusHub
 	mu       sync.Mutex
 	cache    map[string]wifiScanCacheEntry
 	inFlight map[string]*wifiScanCall
@@ -41,6 +45,39 @@ type Wifi struct {
 
 func (s *Wifi) GetStatus(ctx context.Context, _ *nexusv1.WifiServiceGetStatusRequest) (*nexusv1.WifiServiceGetStatusResponse, error) {
 	return s.Adapter.WifiStatus(ctx)
+}
+func (s *Wifi) WatchStatus(ctx context.Context, _ *nexusv1.WifiServiceGetStatusRequest, stream nexusv1connect.WifiServiceWatchStatusServerStream) error {
+	if s.Watcher == nil {
+		return fmt.Errorf("Wi-Fi status notifications are unavailable")
+	}
+	updates, unsubscribe := s.Watcher.subscribe()
+	defer unsubscribe()
+
+	previous, err := s.Adapter.WifiStatus(ctx)
+	if err != nil {
+		return err
+	}
+	if err := stream.Send(previous); err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-updates:
+			current, err := s.Adapter.WifiStatus(ctx)
+			if err != nil {
+				return err
+			}
+			if proto.Equal(previous, current) {
+				continue
+			}
+			if err := stream.Send(current); err != nil {
+				return err
+			}
+			previous = current
+		}
+	}
 }
 func (s *Wifi) Scan(ctx context.Context, req *nexusv1.ScanRequest) (*nexusv1.ScanResponse, error) {
 	iface := req.GetInterface()
@@ -114,31 +151,69 @@ func (s *Wifi) markCurrentConnection(ctx context.Context, iface string, response
 }
 
 func cloneScanResponse(response *nexusv1.ScanResponse) *nexusv1.ScanResponse {
-	clone := *response
-	clone.Networks = make([]*nexusv1.WifiNetwork, len(response.Networks))
-	for i, network := range response.Networks {
-		networkClone := *network
-		clone.Networks[i] = &networkClone
-	}
-	return &clone
+	return proto.Clone(response).(*nexusv1.ScanResponse)
 }
 
-type Hardware struct{ Adapter *platform.Linux }
+type Hardware struct {
+	Adapter *platform.Linux
+	Watcher *HardwareStatusHub
+}
+
+func (s Hardware) notifyStatusChanged() {
+	if s.Watcher != nil {
+		s.Watcher.Notify()
+	}
+}
 
 func (s Hardware) GetStatus(ctx context.Context, _ *nexusv1.HardwareServiceGetStatusRequest) (*nexusv1.HardwareServiceGetStatusResponse, error) {
 	return s.Adapter.HardwareStatus(ctx)
+}
+func (s Hardware) WatchStatus(ctx context.Context, _ *nexusv1.HardwareServiceGetStatusRequest, stream nexusv1connect.HardwareServiceWatchStatusServerStream) error {
+	if s.Watcher == nil {
+		return fmt.Errorf("hardware status notifications are unavailable")
+	}
+	updates, unsubscribe := s.Watcher.subscribe()
+	defer unsubscribe()
+
+	previous, err := s.Adapter.HardwareStatus(ctx)
+	if err != nil {
+		return err
+	}
+	if err := stream.Send(previous); err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-updates:
+			current, err := s.Adapter.HardwareStatus(ctx)
+			if err != nil {
+				return err
+			}
+			if proto.Equal(previous, current) {
+				continue
+			}
+			if err := stream.Send(current); err != nil {
+				return err
+			}
+			previous = current
+		}
+	}
 }
 func (s Hardware) SetBrightness(_ context.Context, req *nexusv1.SetBrightnessRequest) (*nexusv1.SetBrightnessResponse, error) {
 	value, err := s.Adapter.SetBrightness(int(req.GetPercent()), req.GetConfirmed())
 	if err != nil {
 		return nil, err
 	}
+	s.notifyStatusChanged()
 	return &nexusv1.SetBrightnessResponse{Value: value}, nil
 }
 func (s Hardware) SetVolume(ctx context.Context, req *nexusv1.SetVolumeRequest) (*nexusv1.SetVolumeResponse, error) {
 	if err := s.Adapter.SetVolume(ctx, int(req.GetPercent()), req.GetConfirmed()); err != nil {
 		return nil, err
 	}
+	s.notifyStatusChanged()
 	return &nexusv1.SetVolumeResponse{Percent: req.GetPercent()}, nil
 }
 func (s Hardware) PowerAction(ctx context.Context, req *nexusv1.PowerActionRequest) (*nexusv1.PowerActionResponse, error) {

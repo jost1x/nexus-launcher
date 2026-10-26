@@ -5,6 +5,7 @@ Daemon único en Go para exponer capacidades de Linux/Armbian a la interfaz. Se 
 ## Responsabilidades
 
 - Servir contratos Protobuf mediante Connect-Go compatible con gRPC.
+- Emitir una instantánea inicial y cambios de Wi-Fi y hardware por `WifiService.WatchStatus` y `HardwareService.WatchStatus`; notificar operaciones propias y botones físicos, con comparación cada dos segundos para detectar cambios externos.
 - Exponer HTTP/2 sobre Unix Domain Socket con configuración explícita sin TLS.
 - Aislar integración de sistema y hardware detrás de adaptadores detectables.
 - Aplicar timeouts, cancelación, errores tipados y logging estructurado con `log/slog`.
