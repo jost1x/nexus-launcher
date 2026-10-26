@@ -19,6 +19,12 @@ Este documento define las reglas de trabajo para R36S NEXUS. El proyecto es un l
 
 Verificar las versiones y la disponibilidad de las dependencias en el entorno antes de fijar la configuración de compilación. No afirmar compatibilidad con una versión o hardware sin comprobarla.
 
+## Iconografía
+
+- Usar siempre iconos oficiales de Lucide en la interfaz. Preferir sus SVG originales y conservar la licencia incluida en `apps/nexus-ui/src/assets/icons/LICENSE.Lucide`.
+- No dibujar aproximaciones manuales ni sustituir un icono Lucide por otro de una fuente distinta. Si se necesita un icono que no exista en Lucide, consultar al usuario antes de usar otra biblioteca o fuente.
+- Para LVGL, generar los recursos rasterizados a partir de los SVG oficiales; no reemplazar los vectores originales por trazos reinterpretados.
+
 ## Entorno de compilación y despliegue
 
 - Compilar siempre en este PC (el entorno de desarrollo local), incluida la UI destinada a ARM64. Para la R36S usar compilación cruzada y un sysroot/toolchain local cuando haga falta.
