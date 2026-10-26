@@ -15,7 +15,7 @@ ViewObjects build_view(View view, const UiState& state, lv_group_t* group) {
             build_library_content(view, objects.panel, state, group, objects);
             break;
         case View::Settings:
-            build_settings_content(objects.panel, state, group, objects);
+            build_wifi_content(objects.panel, state, group, objects);
             break;
         case View::Wifi:
             build_wifi_content(objects.panel, state, group, objects);
@@ -30,6 +30,9 @@ ViewObjects build_view(View view, const UiState& state, lv_group_t* group) {
         case View::About:
             build_about_content(objects.panel, state, group, objects);
             break;
+    }
+    if (view == View::Settings) {
+        objects.initial_focus = objects.settings_menu_focus;
     }
     if (objects.initial_focus == nullptr) objects.initial_focus = lv_group_get_obj_by_index(group, 0);
     return objects;

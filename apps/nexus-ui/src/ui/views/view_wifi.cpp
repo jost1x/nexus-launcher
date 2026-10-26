@@ -46,6 +46,8 @@ std::string wifi_security_text(const std::string& security) {
 }  // namespace
 
 void build_wifi_content(lv_obj_t* panel, const UiState& state, lv_group_t* group, ViewObjects& objects) {
+        const int content_width = lv_obj_get_content_width(panel);
+        const int content_height = lv_obj_get_content_height(panel);
         auto* heading = create_label(panel, "Redes disponibles", kText, true);
         lv_obj_set_pos(heading, 0, 0);
         std::string status_text = "Estado: ";
@@ -54,7 +56,7 @@ void build_wifi_content(lv_obj_t* panel, const UiState& state, lv_group_t* group
             status_text += "  ·  " + state.wifi_status->ssid();
         }
         auto* connection = create_label(panel, status_text.c_str(), state.wifi_status && state.wifi_status->connected() ? kGood : kMuted);
-        lv_obj_set_width(connection, 294);
+        lv_obj_set_width(connection, std::max(160, content_width - 128));
         lv_obj_set_pos(connection, 0, 36);
         auto* scan = create_action_button(panel, state.wifi_scan_loading ? "Buscando..." : "Actualizar", Action::RefreshWifi, group, 118, 38);
         lv_obj_align(scan, LV_ALIGN_TOP_RIGHT, 0, 26);
@@ -62,19 +64,19 @@ void build_wifi_content(lv_obj_t* panel, const UiState& state, lv_group_t* group
         int error_count = 0;
         if (!state.wifi_status_error.empty()) {
             auto* error = create_label(panel, state.wifi_status_error.c_str(), kWarn);
-            lv_obj_set_width(error, 420);
+            lv_obj_set_width(error, content_width);
             lv_obj_set_pos(error, 0, 74 + error_count++ * 22);
         }
         if (!state.wifi_scan_error.empty()) {
             auto* error = create_label(panel, state.wifi_scan_error.c_str(), kWarn);
-            lv_obj_set_width(error, 420);
+            lv_obj_set_width(error, content_width);
             lv_obj_set_pos(error, 0, 74 + error_count++ * 22);
         }
 
         const int list_y = 82 + error_count * 22;
         const int cache_footer = state.wifi_scan && state.wifi_scan->from_cache() ? 24 : 0;
         auto* list = lv_obj_create(panel);
-        lv_obj_set_size(list, 554, std::max(120, 284 - list_y - cache_footer));
+        lv_obj_set_size(list, content_width, std::max(120, content_height - list_y - cache_footer));
         lv_obj_set_pos(list, 0, list_y);
         lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(list, 0, 0);
@@ -91,7 +93,8 @@ void build_wifi_content(lv_obj_t* panel, const UiState& state, lv_group_t* group
             int y = 0;
             for (const auto& network : state.wifi_scan->networks()) {
                 auto* row = lv_obj_create(list);
-                lv_obj_set_size(row, 533, 43);
+                const int row_width = std::max(160, content_width - 8);
+                lv_obj_set_size(row, row_width, 43);
                 lv_obj_set_pos(row, 0, y);
                 lv_obj_set_style_bg_color(row, network.connected() ? lv_color_hex(0x18264A) : lv_color_hex(0x0D1422), 0);
                 lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
@@ -103,7 +106,7 @@ void build_wifi_content(lv_obj_t* panel, const UiState& state, lv_group_t* group
                 const std::string ssid = network.ssid().empty() ? "Red oculta" : network.ssid();
                 const std::string current = network.connected() ? "  (conectada)" : "";
                 auto* name = create_label(row, (ssid + current).c_str(), kText);
-                lv_obj_set_width(name, 350);
+                lv_obj_set_width(name, std::max(80, row_width - 150));
                 lv_obj_align(name, LV_ALIGN_LEFT_MID, 0, 0);
                 const std::string detail = wifi_security_text(network.security()) + "  ·  " +
                                            std::to_string(std::clamp(network.signal_percent(), 0, 100)) + " %";

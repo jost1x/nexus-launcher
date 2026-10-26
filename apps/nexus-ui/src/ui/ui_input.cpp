@@ -49,15 +49,38 @@ UiController* UiController::active_ = nullptr;
 
 void UiController::action_event(lv_event_t* event) {
     if (active_ == nullptr) return;
-    const auto action = static_cast<Action>(reinterpret_cast<std::uintptr_t>(lv_event_get_user_data(event)));
+    lv_async_call(dispatch_action_async, lv_event_get_user_data(event));
+}
+
+void UiController::dispatch_action_async(void* user_data) {
+    if (active_ == nullptr || active_->stopped_) return;
+    const auto action = static_cast<Action>(reinterpret_cast<std::uintptr_t>(user_data));
     active_->dispatch(action);
+}
+
+void UiController::navigate_back_async(void* user_data) {
+    auto* controller = static_cast<UiController*>(user_data);
+    if (controller == nullptr || controller != active_ || controller->stopped_) return;
+    controller->navigate_back();
+}
+
+void UiController::cycle_section_async(void* user_data) {
+    if (active_ == nullptr || active_->stopped_) return;
+    const int direction = reinterpret_cast<std::uintptr_t>(user_data) == 1 ? -1 : 1;
+    active_->cycle_section(direction);
 }
 
 void UiController::key_event(lv_event_t* event) {
     if (active_ == nullptr) return;
     const uint32_t key = lv_event_get_key(event);
     if (key == LV_KEY_ESC) {
-        active_->navigate_back();
+        lv_async_call(navigate_back_async, active_);
+        return;
+    }
+    if (key == LV_KEY_HOME || key == LV_KEY_END) {
+        lv_async_call(cycle_section_async, reinterpret_cast<void*>(
+                                               static_cast<std::uintptr_t>(key == LV_KEY_HOME ? 1 : 2)));
+        lv_event_stop_bubbling(event);
         return;
     }
     // Sliders own horizontal keys so left/right continues to adjust their value.

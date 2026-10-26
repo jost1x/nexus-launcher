@@ -3,6 +3,7 @@
 #include "rpc/rpc_client.h"
 
 #include <algorithm>
+#include <array>
 
 namespace nexus {
 
@@ -12,15 +13,26 @@ void UiController::navigate(View view) {
 
 void UiController::navigate_to(View view, bool remember_current) {
     if (view == view_) return;
-    if (remember_current && view == View::Home) navigation_history_.clear();
-    else if (remember_current) navigation_history_.push_back(view_);
+    if (view == View::Home) previous_view_.reset();
+    else if (remember_current) {
+        uint32_t focused_index = 0;
+        auto* focused = lv_group_get_focused(focus_group_);
+        const uint32_t count = lv_group_get_obj_count(focus_group_);
+        for (uint32_t index = 0; index < count; ++index) {
+            if (lv_group_get_obj_by_index(focus_group_, index) == focused) {
+                focused_index = index;
+                break;
+            }
+        }
+        previous_view_ = NavigationEntry{view_, focused_index};
+    }
     if (view_ == View::Wifi && view != View::Wifi && wifi_scan_id_ != 0) {
         rpc_.cancel(wifi_scan_id_);
         wifi_scan_id_ = 0;
         state_.wifi_scan_loading = false;
     }
     view_ = view;
-    if (view == View::Wifi) {
+    if (view == View::Settings || view == View::Wifi) {
         if (wifi_watch_id_ == 0 && wifi_status_id_ == 0 && (!state_.wifi_status || !state_.wifi_status_error.empty())) {
             wifi_status_id_ = rpc_.request_wifi_status();
             state_.wifi_status_loading = wifi_status_id_ != 0;
@@ -47,10 +59,38 @@ void UiController::navigate_to(View view, bool remember_current) {
 }
 
 void UiController::navigate_back() {
-    if (view_ == View::Home || navigation_history_.empty()) return;
-    const View previous = navigation_history_.back();
-    navigation_history_.pop_back();
-    navigate_to(previous, false);
+    if (view_ == View::Home || !previous_view_) return;
+    const auto previous = *previous_view_;
+    previous_view_.reset();
+    restore_focus_index_ = previous.focused_index;
+    navigate_to(previous.view, false);
+}
+
+void UiController::cycle_section(int direction) {
+    constexpr std::array settings_sections = {
+        View::Wifi, View::Display, View::Audio, View::System, View::About,
+    };
+    const bool in_settings = view_ == View::Settings || view_ == View::Wifi || view_ == View::Display ||
+                             view_ == View::Audio || view_ == View::System || view_ == View::About;
+    if (in_settings) {
+        const View current = view_ == View::Settings ? View::Wifi : view_;
+        const auto iterator = std::find(settings_sections.begin(), settings_sections.end(), current);
+        const int current_index = iterator == settings_sections.end()
+                                      ? 0
+                                      : static_cast<int>(iterator - settings_sections.begin());
+        const int next_index = (current_index + direction + static_cast<int>(settings_sections.size())) %
+                               static_cast<int>(settings_sections.size());
+        navigate_to(settings_sections[static_cast<size_t>(next_index)], false);
+        return;
+    }
+
+    constexpr std::array main_sections = {View::Home, View::Games, View::Apps, View::Favorites, View::Settings};
+    const auto iterator = std::find(main_sections.begin(), main_sections.end(), view_);
+    const int current_index = iterator == main_sections.end() ? 0 : static_cast<int>(iterator - main_sections.begin());
+    const int next_index = (current_index + direction + static_cast<int>(main_sections.size())) %
+                           static_cast<int>(main_sections.size());
+    const bool remember_home = view_ == View::Home && !previous_view_;
+    navigate_to(main_sections[static_cast<size_t>(next_index)], remember_home);
 }
 
 void UiController::dispatch(Action action) {

@@ -3,8 +3,8 @@
 #include <lvgl.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
-#include <vector>
 
 #include "ui/ui_state.h"
 
@@ -27,13 +27,22 @@ public:
     static void slider_event(lv_event_t* event);
 
 private:
+    struct NavigationEntry {
+        View view;
+        uint32_t focused_index;
+    };
+
     void navigate(View view);
     void navigate_to(View view, bool remember_current);
     void navigate_back();
+    void cycle_section(int direction);
     void render();
     void request_overview();
     void collect_results();
     void update_header();
+    static void dispatch_action_async(void* user_data);
+    static void navigate_back_async(void* user_data);
+    static void cycle_section_async(void* user_data);
     static void timer_event(lv_timer_t* timer);
     static void root_deleted(lv_event_t* event);
 
@@ -41,7 +50,8 @@ private:
     UiState state_;
     std::string last_header_text_;
     View view_ = View::Home;
-    std::vector<View> navigation_history_;
+    std::optional<NavigationEntry> previous_view_;
+    std::optional<uint32_t> restore_focus_index_;
     lv_obj_t* root_ = nullptr;
     lv_obj_t* clock_label_ = nullptr;
     lv_obj_t* wifi_icon_ = nullptr;

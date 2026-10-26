@@ -11,6 +11,23 @@ const lv_color_t kFocus = lv_color_hex(0x13A8FF);
 const lv_color_t kText = lv_color_hex(0xF1F4FC);
 const lv_color_t kMuted = lv_color_hex(0x99A7BC);
 
+const lv_style_transition_dsc_t* focus_transition() {
+    static const lv_style_prop_t properties[] = {
+        LV_STYLE_BG_COLOR,
+        LV_STYLE_BORDER_COLOR,
+        LV_STYLE_OUTLINE_COLOR,
+        LV_STYLE_OUTLINE_WIDTH,
+        0,
+    };
+    static lv_style_transition_dsc_t transition;
+    static bool initialized = false;
+    if (!initialized) {
+        lv_style_transition_dsc_init(&transition, properties, lv_anim_path_ease_in_out, 120, 0, nullptr);
+        initialized = true;
+    }
+    return &transition;
+}
+
 }  // namespace
 
 lv_obj_t* create_label(lv_obj_t* parent, const char* text, lv_color_t color, bool large) {
@@ -36,6 +53,7 @@ lv_obj_t* create_card(lv_obj_t* parent, int width, int height) {
 }
 
 void style_focusable(lv_obj_t* object) {
+    lv_obj_set_style_transition(object, focus_transition(), LV_PART_MAIN);
     lv_obj_set_style_outline_width(object, 2, LV_STATE_FOCUSED);
     lv_obj_set_style_outline_color(object, kFocus, LV_STATE_FOCUSED);
     lv_obj_set_style_outline_pad(object, 2, LV_STATE_FOCUSED);

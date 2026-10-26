@@ -11,25 +11,20 @@ using namespace components;
 using namespace ui_controls;
 using namespace view_helpers;
 
-void build_settings_content(lv_obj_t* panel, const UiState&, lv_group_t* group, ViewObjects& objects) {
-    auto* title = create_label(panel, "Configuración del dispositivo", kText, true);
+void build_settings_content(lv_obj_t* panel, const UiState&, lv_group_t*, ViewObjects&) {
+    auto* title = create_label(panel, "Ajustes de la consola", kText, true);
     lv_obj_set_pos(title, 0, 0);
-    auto* description = create_label(panel, "Elige un área para continuar.", kMuted);
-    lv_obj_set_pos(description, 0, 39);
-    const struct SettingsItem { const char* title; Action action; } settings[] = {
-        {"Wi-Fi", Action::Wifi},
-        {"Pantalla", Action::Display},
-        {"Audio", Action::Audio},
-        {"Sistema", Action::System},
-        {"Acerca de", Action::About},
-    };
-    for (size_t i = 0; i < std::size(settings); ++i) {
-        const int column = static_cast<int>(i % 2);
-        const int row = static_cast<int>(i / 2);
-        auto* button = create_action_button(panel, settings[i].title, settings[i].action, group, 194, 48);
-        lv_obj_set_pos(button, column * 210, 86 + row * 62);
-        if (i == 0) objects.initial_focus = button;
-    }
+    auto* description = create_label(panel, "Elige una categoría en el menú lateral.", kMuted);
+    lv_obj_set_pos(description, 0, 42);
+    auto* divider = lv_obj_create(panel);
+    lv_obj_set_size(divider, lv_obj_get_content_width(panel), 1);
+    lv_obj_set_pos(divider, 0, 78);
+    lv_obj_set_style_bg_color(divider, lv_color_hex(0x26334A), 0);
+    lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(divider, 0, 0);
+    auto* details = create_label(panel, "Conectividad, pantalla, sonido e información del sistema.", kText);
+    lv_obj_set_width(details, lv_obj_get_content_width(panel));
+    lv_obj_set_pos(details, 0, 104);
 }
 
 }  // namespace nexus

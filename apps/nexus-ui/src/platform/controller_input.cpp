@@ -62,6 +62,8 @@ void ControllerInput::read(lv_indev_t* indev, lv_indev_data_t* data) {
         {SDL_CONTROLLER_BUTTON_DPAD_RIGHT, LV_KEY_RIGHT},
         {SDL_CONTROLLER_BUTTON_A, LV_KEY_ENTER},
         {SDL_CONTROLLER_BUTTON_B, LV_KEY_ESC},
+        {SDL_CONTROLLER_BUTTON_LEFTSHOULDER, LV_KEY_HOME},
+        {SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, LV_KEY_END},
     };
     if (self->controller_ != nullptr) {
         for (const auto& mapping : mappings) {
@@ -79,6 +81,7 @@ void ControllerInput::read(lv_indev_t* indev, lv_indev_data_t* data) {
         constexpr RawMapping r36s_mappings[] = {
             {8, LV_KEY_UP}, {9, LV_KEY_DOWN}, {10, LV_KEY_LEFT}, {11, LV_KEY_RIGHT},
             {0, LV_KEY_ENTER}, {1, LV_KEY_ESC},
+            {4, LV_KEY_HOME}, {5, LV_KEY_END},
         };
         for (const auto& mapping : r36s_mappings) {
             if (SDL_JoystickGetButton(self->r36s_keys_, mapping.button) != 0) {

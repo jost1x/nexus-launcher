@@ -14,6 +14,7 @@ struct ViewObjects {
     lv_obj_t* battery_icon = nullptr;
     lv_obj_t* battery_fill = nullptr;
     lv_obj_t* battery_value = nullptr;
+    lv_obj_t* settings_menu_focus = nullptr;
     lv_obj_t* initial_focus = nullptr;
 };
 

@@ -49,6 +49,13 @@ void UiController::render() {
     last_header_text_.clear();
     lv_obj_add_event_cb(root_, root_deleted, LV_EVENT_DELETE, this);
     if (objects.initial_focus != nullptr) lv_group_focus_obj(objects.initial_focus);
+    if (restore_focus_index_) {
+        auto* restore_focus = lv_group_get_obj_by_index(focus_group_, *restore_focus_index_);
+        if (restore_focus != nullptr && lv_obj_is_visible(restore_focus)) {
+            lv_group_focus_obj(restore_focus);
+        }
+        restore_focus_index_.reset();
+    }
     update_header();
 }
 

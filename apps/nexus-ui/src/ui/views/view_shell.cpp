@@ -60,8 +60,10 @@ ViewObjects build_view_shell(View view, lv_group_t* group) {
     lv_obj_set_style_pad_hor(header, 17, 0);
     auto* brand = create_label(header, "NEXUS", lv_color_hex(0xA8B4FF), true);
     lv_obj_align(brand, LV_ALIGN_LEFT_MID, 0, 0);
-    auto* heading = create_label(header, view_title(view), kText);
-    lv_obj_align_to(heading, brand, LV_ALIGN_OUT_RIGHT_MID, 12, 0);
+    if (view != View::Home) {
+        auto* heading = create_label(header, view_title(view), kText);
+        lv_obj_align_to(heading, brand, LV_ALIGN_OUT_RIGHT_MID, 12, 0);
+    }
 
     objects.clock = create_label(header, "--:--", kMuted);
     lv_obj_set_width(objects.clock, 68);
@@ -116,32 +118,78 @@ ViewObjects build_view_shell(View view, lv_group_t* group) {
     lv_obj_set_style_text_font(objects.battery_value, &nexus_font_16, 0);
     lv_obj_set_style_text_align(objects.battery_value, LV_TEXT_ALIGN_LEFT, 0);
 
-    auto* navigation = create_card(root, 616, 42);
-    lv_obj_set_pos(navigation, 12, 54);
-    lv_obj_set_style_pad_all(navigation, 4, 0);
-    const bool settings_page = view == View::Wifi || view == View::Display || view == View::Audio ||
-                               view == View::System || view == View::About;
-    const View selected_nav_view = settings_page ? View::Settings : view;
-    const struct NavItem { const char* title; View view; Action action; } items[] = {
-        {"Inicio", View::Home, Action::Home},
-        {"Juegos", View::Games, Action::Games},
-        {"Aplicaciones", View::Apps, Action::Apps},
-        {"Favoritos", View::Favorites, Action::Favorites},
-        {"Ajustes", View::Settings, Action::Settings},
-    };
-    for (size_t i = 0; i < std::size(items); ++i) {
-        auto* button = create_action_button(navigation, items[i].title, items[i].action, group, 118, 34,
-                                     items[i].view == selected_nav_view);
-        lv_obj_set_pos(button, 4 + static_cast<int>(i) * 120, 0);
-        if (items[i].view == selected_nav_view) objects.initial_focus = button;
+    const bool home_view = view == View::Home;
+    const bool settings_view = view == View::Settings || view == View::Wifi || view == View::Display ||
+                               view == View::Audio || view == View::System || view == View::About;
+    if (!home_view && !settings_view) {
+        auto* navigation = create_card(root, 616, 54);
+        lv_obj_set_pos(navigation, 12, 54);
+        lv_obj_set_style_pad_all(navigation, 4, 0);
+        const struct NavItem { const char* title; const lv_image_dsc_t* icon; View view; Action action; } items[] = {
+            {"Inicio", &nexus_icon_house, View::Home, Action::Home},
+            {"Juegos", &nexus_icon_gamepad_2, View::Games, Action::Games},
+            {"Aplicaciones", &nexus_icon_grid_2x2, View::Apps, Action::Apps},
+            {"Favoritos", &nexus_icon_star, View::Favorites, Action::Favorites},
+            {"Ajustes", &nexus_icon_settings, View::Settings, Action::Settings},
+        };
+        for (size_t i = 0; i < std::size(items); ++i) {
+            auto* button = create_action_icon_stacked_button(navigation, items[i].icon, items[i].title,
+                                                            items[i].action, group, 118, 46,
+                                                            items[i].view == view);
+            lv_obj_set_pos(button, 4 + static_cast<int>(i) * 120, 0);
+            if (items[i].view == view) objects.initial_focus = button;
+        }
     }
 
-    auto* panel = create_card(root, 616, 326);
-    objects.panel = panel;
-    lv_obj_set_pos(panel, 12, 104);
-    lv_obj_set_style_pad_all(panel, 16, 0);
+    if (settings_view) {
+        auto* sidebar = create_card(root, 150, 384);
+        lv_obj_set_pos(sidebar, 12, 56);
+        lv_obj_set_style_pad_all(sidebar, 6, 0);
+        lv_obj_clear_flag(sidebar, LV_OBJ_FLAG_SCROLLABLE);
+        auto* sidebar_title = create_label(sidebar, "AJUSTES", kMuted);
+        lv_obj_set_pos(sidebar_title, 8, 8);
 
-    auto* controls_hint = create_label(root, "A: aceptar    ·    B: volver", kMuted);
+        const struct SettingsItem { const char* title; const lv_image_dsc_t* icon; View view; Action action; } settings[] = {
+            {"Wi-Fi", &nexus_icon_wifi, View::Wifi, Action::Wifi},
+            {"Pantalla", &nexus_icon_sun, View::Display, Action::Display},
+            {"Audio", &nexus_icon_volume_2, View::Audio, Action::Audio},
+            {"Sistema", &nexus_icon_cpu, View::System, Action::System},
+            {"Acerca de", &nexus_icon_info, View::About, Action::About},
+        };
+        constexpr int settings_button_width = 136;
+        for (size_t i = 0; i < std::size(settings); ++i) {
+            const bool selected = view == settings[i].view || (view == View::Settings && i == 0);
+            auto* button = create_action_icon_label_button(sidebar, settings[i].icon, settings[i].title,
+                                                           settings[i].action, group, settings_button_width,
+                                                           44, selected);
+            lv_obj_set_pos(button, 0, 36 + static_cast<int>(i) * 51);
+            if (selected || (view == View::Settings && i == 0)) objects.settings_menu_focus = button;
+            if (objects.initial_focus == nullptr && (selected || (view == View::Settings && i == 0))) {
+                objects.initial_focus = button;
+            }
+        }
+    }
+
+    auto* panel = create_card(root, home_view ? 640 : settings_view ? 454 : 616,
+                              home_view ? 408 : settings_view ? 384 : 316);
+    objects.panel = panel;
+    lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+    if (home_view) {
+        lv_obj_set_pos(panel, 0, 54);
+        lv_obj_set_style_bg_opa(panel, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(panel, 0, 0);
+        lv_obj_set_style_radius(panel, 0, 0);
+        lv_obj_set_style_pad_all(panel, 0, 0);
+    } else if (settings_view) {
+        lv_obj_set_pos(panel, 174, 56);
+        lv_obj_set_style_pad_all(panel, 16, 0);
+    } else {
+        lv_obj_set_pos(panel, 12, 114);
+        lv_obj_set_style_pad_all(panel, 16, 0);
+    }
+
+    const char* hint_text = "Cruceta: mover/ajustar    ·    L/R: sección    ·    A: aceptar    ·    B: volver";
+    auto* controls_hint = create_label(root, hint_text, kMuted);
     lv_obj_align(controls_hint, LV_ALIGN_BOTTOM_MID, 0, -7);
 
     return objects;

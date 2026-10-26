@@ -41,7 +41,8 @@ void build_controls_content(View view, lv_obj_t* panel, const UiState& state, lv
         } else {
             auto* value = create_label(panel, (std::to_string(selected) + " %").c_str(), kText, true);
             lv_obj_set_pos(value, 0, 96);
-            auto* slider = create_action_slider(panel, selected, slider_action, group, 520);
+            auto* slider = create_action_slider(panel, selected, slider_action, group,
+                                                std::max(260, lv_obj_get_content_width(panel) - 12));
             lv_obj_set_pos(slider, 0, 153);
             bind_slider_value_label(slider, value);
             auto* apply = create_action_button(panel, "Aplicar cambio", display ? Action::ApplyBrightness : Action::ApplyVolume, group, 184, 44);
@@ -52,12 +53,12 @@ void build_controls_content(View view, lv_obj_t* panel, const UiState& state, lv
         }
         if (!state.hardware_error.empty()) {
             auto* error = create_label(panel, state.hardware_error.c_str(), kWarn);
-            lv_obj_set_width(error, 420);
+            lv_obj_set_width(error, lv_obj_get_content_width(panel));
             lv_obj_set_pos(error, 0, 280);
         }
         if (!state.action_message.empty()) {
             auto* message = create_label(panel, state.action_message.c_str(), kGood);
-            lv_obj_set_width(message, 420);
+            lv_obj_set_width(message, lv_obj_get_content_width(panel));
             lv_obj_set_pos(message, 0, 280);
         }
     
