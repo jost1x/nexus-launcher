@@ -1,0 +1,9 @@
+{
+  "name": "nexus-pocketjs-poc",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@pocketjs/framework": "0.15.0",
+    "solid-js": "1.9.14"
+  }
+}
